@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary: #14b8a6;
+  --color-primary-hover: #0f9f90;
+  --color-primary-soft: #ccfbf1;
+  --color-secondary: #0b1f4d;
+  --color-surface: #ffffff;
+  --color-border: #dbe7f7;
+  --app-canvas: #f6faff;
+  --ink: #0f172a;
+}
+
+@layer base {
+  body {
+    @apply font-sans text-slate-800 antialiased;
+    background-color: var(--app-canvas);
+    background-image: linear-gradient(
+      180deg,
+      #f6f9fc 0%,
+      #eef3f9 42%,
+      #e8eef6 100%
+    );
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+::selection {
+  background: rgba(15, 118, 110, 0.18);
+  color: #0f172a;
+}
+
+.premium-surface {
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(231, 229, 228, 0.9);
+  box-shadow:
+    0 2px 8px rgba(28, 25, 23, 0.04),
+    0 16px 40px rgba(28, 25, 23, 0.06);
+}
+
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.animate-float-slow {
+  animation: float-slow 6s ease-in-out infinite;
+}
+
+@keyframes slide-fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-fade-up {
+  animation: slide-fade-up 700ms ease-out forwards;
+}

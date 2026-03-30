@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+backend/dist/
+
+# Secrets — use .env.example only in git
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Local / editor
+.DS_Store
+*.local
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Logs
+*.log
+npm-debug.log*
