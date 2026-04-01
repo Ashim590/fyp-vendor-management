@@ -49,11 +49,11 @@ From the repo root, `npm run dev` runs backend and frontend together (see root `
     - `NODE_ENV=production`
     - `MONGO_URI=<atlas-uri>`
     - `JWT_SECRET=<long-random-secret>`
-    - `CLIENT_ORIGINS=https://<your-vercel-domain>`
+    - `CLIENT_ORIGINS=https://<your-vercel-domain>` (comma-separate every SPA URL you use, e.g. both `*.vercel.app` and a custom domain, or login fails with a “network” error)
     - `BACKEND_URL=https://<your-render-service>.onrender.com`
     - `FRONTEND_URL=https://<your-vercel-domain>`
   - Vercel frontend:
-    - `VITE_API_BASE_URL=https://<your-render-service>.onrender.com`
+    - `VITE_API_BASE_URL=https://<your-render-service>.onrender.com` (**required**; without it the app calls `/api` on Vercel and nothing responds)
 
 - Atlas checklist:
   - Create DB user with password and use `mongodb+srv://...` in `MONGO_URI`.

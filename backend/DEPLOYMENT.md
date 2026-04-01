@@ -1,12 +1,14 @@
 # Paropakar VendorNet Deployment (Production Baseline)
 
 ## Required environment variables
-Create a `.env` file next to `server.ts` (copy from `.env.example`):
+Create a `.env` file in `backend/` (copy from `.env.example`), or set the same keys in Render:
 
-- `MONGO_URI`: MongoDB connection string
-- `JWT_SECRET`: secret used to sign/verify JWTs
-- `PORT`: API port (default `5000`)
-- `CLIENT_ORIGINS`: comma-separated list of allowed frontend origins for CORS
+- `NODE_ENV`: use `production` when hosted
+- `MONGO_URI`: MongoDB connection string (Atlas `mongodb+srv://...` in production)
+- `JWT_SECRET`: secret used to sign/verify JWTs (**required** in production — process exits if unset)
+- `CLIENT_ORIGINS`: comma-separated **exact** frontend origins (`https://your-app.vercel.app`). List every Vercel URL you use (production + alternate names); missing origins cause browser “Network Error” on login.
+- `BACKEND_URL` / `FRONTEND_URL`: public base URLs (no trailing slash) for callbacks and redirects
+- `PORT`: optional on Render (platform sets `PORT`); default `5000` locally
 
 ## Start the backend
 From `backend/`:
@@ -16,6 +18,15 @@ npm install
 npm run build
 npm run start
 ```
+
+## Optional: seed demo users (local / fresh DB)
+
+```bash
+cd backend
+npm run seed
+```
+
+Creates `admin@paropakar.org` and `staff@paropakar.org` if missing (passwords printed in the console). For production, prefer controlled onboarding instead of default passwords.
 
 ## Bootstrap the initial admin account
 This project includes a temporary bootstrap endpoint to create the first admin:
@@ -53,9 +64,10 @@ Tenders & bids:
 - `PATCH /api/v1/bids/:id/accept` / `PATCH /api/v1/bids/:id/reject`
 
 Notifications:
-- `GET  /api/v1/notifications` returns `{ notifications, unreadCount }`
+- `GET  /api/v1/notifications` returns `{ notifications, unreadCount, unreadByType, nextCursor, hasMore }`
 - `PATCH /api/v1/notifications/:id/read`
 - `PATCH /api/v1/notifications/read-all`
+- `DELETE /api/v1/notifications/:id` (dismiss for current user)
 
 Audit logs:
 - `GET /api/v1/audit-log/my` (authenticated user)
@@ -67,8 +79,10 @@ Reports:
 - `GET /api/v1/reports/tenders-per-month`
 - `GET /api/v1/reports/vendor-participation`
 
-## Migration notes (legacy JS -> unified TypeScript)
-This repo now uses TypeScript models/collections for the core VendorNet system:
+## Migration notes (legacy JS → TypeScript)
+The old duplicate Express app (`backend/index.js`, `controllers/`, `routes/*.js`, `models/*.js`, etc.) has been removed. The only API surface is **`backend/src/`** (built to `dist/`).
+
+This repo uses TypeScript models/collections for the core VendorNet system:
 
 1. `Vendor` schema was aligned to match the legacy `vendors` fields used by the current UI.
 2. `Tender`, `Bid`, and `Notification` are stored in the unified TypeScript collections.
