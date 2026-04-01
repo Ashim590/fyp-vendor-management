@@ -2,7 +2,10 @@ import { Router } from 'express';
 import Notification from '../models/Notification';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { parseListLimit } from '../utils/cursorPagination';
-import { loadNotificationPageForUser } from '../utils/notificationListForUser';
+import {
+  bustNotificationListCacheForUser,
+  loadNotificationPageForUser,
+} from '../utils/notificationListForUser';
 
 const router = Router();
 
@@ -14,10 +17,13 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
       typeof req.query.cursor === 'string' ? req.query.cursor : undefined;
 
     try {
-      const page = await loadNotificationPageForUser(userId, pageLimit, cursor);
+      const page = await loadNotificationPageForUser(userId, pageLimit, cursor, {
+        viewerRole: req.user!.role,
+      });
       return res.json({
         notifications: page.notifications,
         unreadCount: page.unreadCount,
+        unreadByType: page.unreadByType,
         nextCursor: page.nextCursor,
         hasMore: page.hasMore,
       });
@@ -43,6 +49,7 @@ router.patch('/:id/read', authenticate, async (req: AuthRequest, res) => {
     if (!n) {
       return res.status(404).json({ message: 'Not found' });
     }
+    bustNotificationListCacheForUser(String(req.user!._id));
     return res.json(n);
   } catch (err) {
     console.error(err);
@@ -53,10 +60,28 @@ router.patch('/:id/read', authenticate, async (req: AuthRequest, res) => {
 router.patch('/read-all', authenticate, async (req: AuthRequest, res) => {
   try {
     await Notification.updateMany({ user: req.user!._id, read: false }, { read: true });
+    bustNotificationListCacheForUser(String(req.user!._id));
     return res.json({ success: true });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Failed to mark all read' });
+  }
+});
+
+router.delete('/:id', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const n = await Notification.findOneAndDelete({
+      _id: req.params.id,
+      user: req.user!._id,
+    });
+    if (!n) {
+      return res.status(404).json({ message: 'Not found' });
+    }
+    bustNotificationListCacheForUser(String(req.user!._id));
+    return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Failed to dismiss notification' });
   }
 });
 

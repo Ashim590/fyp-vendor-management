@@ -7,6 +7,8 @@ const ORDERED_SIDEBAR_PREFIXES = {
   admin: [
     "/admin/users",
     "/admin",
+    "/procurement/payments",
+    "/invoices",
     "/approvals",
     "/bids-monitor",
     "/purchase-requests",
@@ -14,6 +16,8 @@ const ORDERED_SIDEBAR_PREFIXES = {
     "/deliveries",
   ],
   staff: [
+    "/procurement/payments",
+    "/invoices",
     "/purchase-requests",
     "/approvals",
     "/bids-monitor",
@@ -21,7 +25,7 @@ const ORDERED_SIDEBAR_PREFIXES = {
     "/deliveries",
     "/",
   ],
-  vendor: ["/my-bids", "/tenders", "/deliveries", "/"],
+  vendor: ["/my-payments", "/invoices", "/my-bids", "/tenders", "/deliveries", "/"],
 };
 
 const NON_WORKSPACE_PATHS = new Set([
@@ -46,11 +50,11 @@ const TYPE_TO_PATHS = {
     vendor: ["/tenders"],
   },
   bid_submitted: { admin: ["/bids-monitor"], staff: ["/bids-monitor"] },
-  bid_accepted: { vendor: ["/tenders"] },
+  bid_accepted: { vendor: ["/my-bids"] },
   bid_rejected: { vendor: ["/my-bids"] },
-  payment_pending: { vendor: ["/tenders"] },
-  payment_completed: { vendor: ["/tenders"] },
-  payment_failed: { vendor: ["/tenders"] },
+  payment_pending: { vendor: ["/my-payments"] },
+  payment_completed: { vendor: ["/invoices"] },
+  payment_failed: { vendor: ["/my-payments"] },
   invoice_payment_pending: { vendor: ["/invoices"] },
   invoice_payment_paid: { vendor: ["/invoices"] },
   delivery_shipped: {
@@ -149,15 +153,40 @@ function pathsForUnreadNotification(notification, role) {
 /**
  * @param {Array<{ read?: boolean, type?: string, link?: string }>} notifications
  * @param {'admin' | 'staff' | 'vendor' | undefined} userRole
+ * @param {Record<string, number> | undefined} unreadByType
  * @returns {Record<string, number>}
  */
-export function getUnreadCountsBySidebarPath(notifications, userRole) {
+export function getUnreadCountsBySidebarPath(notifications, userRole, unreadByType) {
   const role = userRole === "admin" || userRole === "staff" || userRole === "vendor" ? userRole : null;
   if (!role || !Array.isArray(notifications)) return {};
 
   const counts = {};
+  const typeTotals =
+    unreadByType && typeof unreadByType === "object" ? unreadByType : null;
+
+  // Exact totals from server for all unread notifications (not limited by page size).
+  if (typeTotals) {
+    for (const [type, rawCount] of Object.entries(typeTotals)) {
+      const c = Number(rawCount || 0);
+      if (!Number.isFinite(c) || c <= 0) continue;
+      const byType = TYPE_TO_PATHS[type]?.[role];
+      if (!byType?.length) continue;
+      for (const p of byType) {
+        counts[p] = (counts[p] || 0) + c;
+      }
+    }
+  }
+
+  // Fallback/additive mapping via links for types not mapped for this role.
   for (const n of notifications) {
     if (n?.read) continue;
+    const type = String(n?.type || "");
+    const isAlreadyCountedByType =
+      !!typeTotals &&
+      Number(typeTotals[type] || 0) > 0 &&
+      Array.isArray(TYPE_TO_PATHS[type]?.[role]) &&
+      TYPE_TO_PATHS[type][role].length > 0;
+    if (isAlreadyCountedByType) continue;
     const paths = pathsForUnreadNotification(n, role);
     for (const p of paths) {
       counts[p] = (counts[p] || 0) + 1;

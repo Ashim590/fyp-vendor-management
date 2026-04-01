@@ -1,25 +1,25 @@
-import { Router, Response } from 'express';
-import mongoose from 'mongoose';
-import multer from 'multer';
-import { authenticate, authorize, AuthRequest } from '../middleware/auth';
-import Payment from '../models/Payment';
-import Tender from '../models/Tender';
-import Bid from '../models/Bid';
-import Vendor from '../models/Vendor';
-import User from '../models/User';
-import Notification from '../models/Notification';
-import { ensureDeliveryForTenderPayment } from '../utils/deliveryFromPayment';
-import { ensureInvoiceForTenderPayment } from '../utils/invoiceFromTenderPayment';
-import { invalidateStaffSummaryCache } from '../utils/staffDashboardCache';
-import { invalidateAdminDashboardCache } from '../utils/adminDashboardCache';
+import { Router, Response } from "express";
+import mongoose from "mongoose";
+import multer from "multer";
+import { authenticate, authorize, AuthRequest } from "../middleware/auth";
+import Payment from "../models/Payment";
+import Tender from "../models/Tender";
+import Bid from "../models/Bid";
+import Vendor from "../models/Vendor";
+import User from "../models/User";
+import Notification from "../models/Notification";
+import { ensureDeliveryForTenderPayment } from "../utils/deliveryFromPayment";
+import { ensureInvoiceForTenderPayment } from "../utils/invoiceFromTenderPayment";
+import { invalidateStaffSummaryCache } from "../utils/staffDashboardCache";
+import { invalidateAdminDashboardCache } from "../utils/adminDashboardCache";
 import {
   assertSandboxCheckoutReachable,
   checkEsewaTransactionStatus,
   getEsewaConfig,
   getPublicBaseUrls,
   signEsewaPayload,
-} from '../services/esewa';
-import { parseListLimit } from '../utils/cursorPagination';
+} from "../services/esewa";
+import { parseListLimit } from "../utils/cursorPagination";
 
 const router = Router();
 
@@ -40,6 +40,19 @@ function tenderEsewaUrls(): { successUrl: string; failureUrl: string } {
   };
 }
 
+/**
+ * eSewa redirects with ?data=<base64> appended to success_url. If success_url already
+ * contained ?paymentId=..., the result is ...?paymentId=x?data=y and `data` is never parsed.
+ * Use path: .../callback/<paymentId> so eSewa produces .../callback/<id>?data=... .
+ */
+function buildTenderEsewaSuccessUrl(paymentId: string): string {
+  const raw = process.env.ESEWA_TENDER_SUCCESS_URL?.trim();
+  const { serverBaseUrl } = getPublicBaseUrls();
+  const fallbackBase = `${serverBaseUrl.replace(/\/+$/, "")}/api/v1/payment/esewa/callback`;
+  const base = (raw || fallbackBase).split("?")[0].replace(/\/+$/, "");
+  return `${base}/${encodeURIComponent(paymentId)}`;
+}
+
 function getEsewaConfigForTenderPayment() {
   const cfg = getEsewaConfig();
   const { successUrl, failureUrl } = tenderEsewaUrls();
@@ -47,13 +60,13 @@ function getEsewaConfigForTenderPayment() {
 }
 
 function normalizeAmountString(value: number): string {
-  if (!Number.isFinite(value)) return '0';
+  if (!Number.isFinite(value)) return "0";
   const fixed = value.toFixed(2);
-  return fixed.endsWith('.00') ? String(Math.trunc(value)) : fixed;
+  return fixed.endsWith(".00") ? String(Math.trunc(value)) : fixed;
 }
 
 function amountsEqualForEsewa(a: number, decodedTotal: unknown): boolean {
-  if (decodedTotal == null || decodedTotal === '') return true;
+  if (decodedTotal == null || decodedTotal === "") return true;
   const x = Number(a);
   const y = Number(decodedTotal);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
@@ -62,29 +75,29 @@ function amountsEqualForEsewa(a: number, decodedTotal: unknown): boolean {
 
 function generateEsewaTransactionUuid(prefix: string, id: string): string {
   const raw = `${prefix}-${id}-${Date.now()}`;
-  return raw.replace(/[^A-Za-z0-9-]/g, '-');
+  return raw.replace(/[^A-Za-z0-9-]/g, "-");
 }
 
 function isSandboxAmountOverLimit(mode: string, amount: number): boolean {
-  return mode === 'sandbox' && Number.isFinite(amount) && amount > 100_000;
+  return mode === "sandbox" && Number.isFinite(amount) && amount > 100_000;
 }
 
 router.post(
-  '/create',
+  "/create",
   authenticate,
-  authorize(['ADMIN', 'PROCUREMENT_OFFICER']),
-  upload.single('qrImage'),
+  authorize(["ADMIN", "PROCUREMENT_OFFICER"]),
+  upload.single("qrImage"),
   async (req: AuthRequest, res: Response) => {
     const { tenderId, vendorId, amount, bidId, notes } = req.body || {};
     if (!tenderId || !vendorId || amount == null) {
       return res.status(400).json({
-        message: 'tenderId, vendorId and amount are required',
+        message: "tenderId, vendorId and amount are required",
       });
     }
     const tender = await Tender.findById(tenderId);
-    if (!tender) return res.status(404).json({ message: 'Tender not found' });
+    if (!tender) return res.status(404).json({ message: "Tender not found" });
     const vendor = await Vendor.findById(vendorId);
-    if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
+    if (!vendor) return res.status(404).json({ message: "Vendor not found" });
 
     const existing = await Payment.findOne({
       tender: tender._id,
@@ -92,14 +105,15 @@ router.post(
     });
     if (existing) {
       return res.status(400).json({
-        message: 'Payment already exists for this tender and vendor',
+        message: "Payment already exists for this tender and vendor",
       });
     }
 
     let selectedBid = null;
     if (bidId) {
       selectedBid = await Bid.findById(bidId);
-      if (!selectedBid) return res.status(404).json({ message: 'Bid not found' });
+      if (!selectedBid)
+        return res.status(404).json({ message: "Bid not found" });
     }
 
     const payment = new Payment({
@@ -108,16 +122,17 @@ router.post(
       bid: selectedBid?._id,
       vendor: vendor._id,
       vendorName: vendor.name,
+      vendorRegistrationNumber: vendor.registrationNumber || "",
       amount: Number(amount),
-      status: 'Pending',
-      method: 'eSewa',
-      provider: 'eSewa',
-      transactionId: '',
-      payerMobileNumber: '',
-      qrImage: '',
+      status: "Pending",
+      method: "eSewa",
+      provider: "eSewa",
+      transactionId: "",
+      payerMobileNumber: "",
+      qrImage: "",
       createdBy: req.user?._id,
       updatedBy: req.user?._id,
-      notes: notes || '',
+      notes: notes || "",
     });
     await payment.save();
     invalidateStaffSummaryCache();
@@ -127,10 +142,10 @@ router.post(
     if (vendorUser) {
       await Notification.create({
         user: vendorUser._id,
-        title: 'Payment initiated',
-        body: `A payment of NPR ${payment.amount} is pending for tender ${payment.tenderReference}.`,
-        link: '/my-payments',
-        type: 'payment_pending',
+        title: "Tender payment status update",
+        body: `Payment status for tender ${payment.tenderReference} is pending (NPR ${payment.amount}). Procurement will complete payment; you can track status in My payments.`,
+        link: "/my-payments",
+        type: "payment_pending",
       });
     }
 
@@ -139,40 +154,40 @@ router.post(
 );
 
 router.get(
-  '/',
+  "/",
   authenticate,
-  authorize(['ADMIN', 'PROCUREMENT_OFFICER']),
+  authorize(["ADMIN", "PROCUREMENT_OFFICER"]),
   async (req: AuthRequest, res: Response) => {
     try {
       const { status, tenderId } = req.query || {};
       const query: Record<string, unknown> = {};
-      if (status && typeof status === 'string') query.status = status;
-      if (tenderId && typeof tenderId === 'string') query.tender = tenderId;
+      if (status && typeof status === "string") query.status = status;
+      if (tenderId && typeof tenderId === "string") query.tender = tenderId;
       const lim = parseListLimit(req.query.limit, 80, 200);
 
       const payments = await Payment.find(query)
         .sort({ createdAt: -1 })
         .limit(lim)
-        .select('-gatewayResponseRaw -qrImage')
-        .populate('tender', 'title referenceNumber status')
-        .populate('vendor', 'name email')
+        .select("-gatewayResponseRaw -qrImage")
+        .populate("tender", "title referenceNumber status")
+        .populate("vendor", "name email")
         .lean();
 
       return res.json({ success: true, payments });
     } catch (err) {
-      console.error('GET /api/v1/payment', err);
+      console.error("GET /api/v1/payment", err);
       return res.status(500).json({
         success: false,
-        message: 'Could not load payments.',
+        message: "Could not load payments.",
       });
     }
   },
 );
 
 router.get(
-  '/my',
+  "/my",
   authenticate,
-  authorize(['VENDOR']),
+  authorize(["VENDOR"]),
   async (req: AuthRequest, res: Response) => {
     if (!req.user?.vendorProfile) {
       return res.json({ success: true, payments: [] });
@@ -181,24 +196,24 @@ router.get(
     const payments = await Payment.find({ vendor: req.user.vendorProfile })
       .sort({ createdAt: -1 })
       .limit(lim)
-      .select('-gatewayResponseRaw -qrImage')
-      .populate('tender', 'title referenceNumber status')
+      .select("-gatewayResponseRaw -qrImage")
+      .populate("tender", "title referenceNumber status")
       .lean();
     res.json({ success: true, payments });
   },
 );
 
 router.get(
-  '/summary',
+  "/summary",
   authenticate,
-  authorize(['ADMIN']),
+  authorize(["ADMIN"]),
   async (_req: AuthRequest, res: Response) => {
     const [total, pending, completed, failed, totalAmount] = await Promise.all([
       Payment.countDocuments(),
-      Payment.countDocuments({ status: 'Pending' }),
-      Payment.countDocuments({ status: 'Completed' }),
-      Payment.countDocuments({ status: 'Failed' }),
-      Payment.aggregate([{ $group: { _id: null, sum: { $sum: '$amount' } } }]),
+      Payment.countDocuments({ status: "Pending" }),
+      Payment.countDocuments({ status: "Completed" }),
+      Payment.countDocuments({ status: "Failed" }),
+      Payment.aggregate([{ $group: { _id: null, sum: { $sum: "$amount" } } }]),
     ]);
     res.json({
       success: true,
@@ -214,68 +229,66 @@ router.get(
 );
 
 router.get(
-  '/:paymentId',
+  "/:paymentId",
   authenticate,
-  authorize(['ADMIN', 'PROCUREMENT_OFFICER', 'VENDOR']),
+  authorize(["ADMIN", "PROCUREMENT_OFFICER", "VENDOR"]),
   async (req: AuthRequest, res: Response) => {
     const payment = await Payment.findById(req.params.paymentId)
-      .populate('tender', 'title referenceNumber status')
-      .populate('vendor', 'name email');
-    if (!payment) return res.status(404).json({ message: 'Payment not found' });
+      .populate("tender", "title referenceNumber status")
+      .populate("vendor", "name email");
+    if (!payment) return res.status(404).json({ message: "Payment not found" });
     if (
-      req.user?.role === 'VENDOR' &&
+      req.user?.role === "VENDOR" &&
       String(payment.vendor) !== String(req.user.vendorProfile)
     ) {
-      return res.status(403).json({ message: 'Forbidden: insufficient role' });
+      return res.status(403).json({ message: "Forbidden: insufficient role" });
     }
     res.json({ success: true, payment });
   },
 );
 
 router.patch(
-  '/:paymentId/status',
+  "/:paymentId/status",
   authenticate,
-  authorize(['PROCUREMENT_OFFICER', 'ADMIN']),
+  authorize(["PROCUREMENT_OFFICER"]),
   async (_req: AuthRequest, res: Response) => {
     return res.status(410).json({
       message:
-        'Manual payment status updates are disabled. Use eSewa only; status updates occur after server-side verification.',
+        "Manual payment status updates are disabled. Use eSewa only; status updates occur after server-side verification.",
     });
   },
 );
 
 router.post(
-  '/:paymentId/esewa/initiate',
+  "/:paymentId/esewa/initiate",
   authenticate,
-  authorize(['PROCUREMENT_OFFICER', 'ADMIN', 'VENDOR']),
+  authorize(["PROCUREMENT_OFFICER"]),
   async (req: AuthRequest, res: Response) => {
     const payment = await Payment.findById(req.params.paymentId);
-    if (!payment) return res.status(404).json({ message: 'Payment not found' });
+    if (!payment) return res.status(404).json({ message: "Payment not found" });
 
-    if (req.user?.role === 'VENDOR') {
-      if (String(payment.vendor) !== String(req.user.vendorProfile)) {
-        return res.status(403).json({ message: 'Forbidden' });
-      }
-    }
-
-    if (payment.status !== 'Pending') {
+    if (payment.status !== "Pending") {
       return res.status(400).json({
-        message: 'Only pending payments can be initiated via eSewa',
+        message: "Only pending payments can be initiated via eSewa",
       });
     }
 
     const cfg = getEsewaConfigForTenderPayment();
     if (!cfg.secretKey) {
       return res.status(500).json({
-        message: 'eSewa is not configured. Set ESEWA_SECRET_KEY for production.',
+        message:
+          "eSewa is not configured. Set ESEWA_SECRET_KEY for production.",
       });
     }
 
-    if (cfg.mode === 'sandbox') {
+    if (cfg.mode === "sandbox") {
       try {
         await assertSandboxCheckoutReachable(cfg.checkoutUrl);
       } catch (e) {
-        const message = e instanceof Error ? e.message : 'eSewa sandbox checkout is unreachable';
+        const message =
+          e instanceof Error
+            ? e.message
+            : "eSewa sandbox checkout is unreachable";
         return res.status(503).json({ success: false, message });
       }
     }
@@ -284,22 +297,20 @@ router.post(
     if (isSandboxAmountOverLimit(cfg.mode, amountNumber)) {
       return res.status(400).json({
         message:
-          'Sandbox limit exceeded. Maximum allowed amount is NPR 100000 per transaction.',
+          "Sandbox limit exceeded. Maximum allowed amount is NPR 100000 per transaction.",
       });
     }
 
-    const transactionUuid = generateEsewaTransactionUuid('pay', String(payment._id));
+    const transactionUuid = generateEsewaTransactionUuid(
+      "pay",
+      String(payment._id),
+    );
     const amount = normalizeAmountString(amountNumber);
-    const taxAmount = '0';
+    const taxAmount = "0";
     const totalAmount = amount;
-    const signedFieldNames = 'total_amount,transaction_uuid,product_code';
+    const signedFieldNames = "total_amount,transaction_uuid,product_code";
 
-    const { serverBaseUrl } = getPublicBaseUrls();
-    const callbackBase =
-      process.env.ESEWA_TENDER_SUCCESS_URL ||
-      `${serverBaseUrl}/api/v1/payment/esewa/callback`;
-    const sep = callbackBase.includes('?') ? '&' : '?';
-    const successUrlForForm = `${callbackBase}${sep}paymentId=${encodeURIComponent(String(payment._id))}`;
+    const successUrlForForm = buildTenderEsewaSuccessUrl(String(payment._id));
 
     const payload: Record<string, string> = {
       amount,
@@ -307,22 +318,26 @@ router.post(
       total_amount: totalAmount,
       transaction_uuid: transactionUuid,
       product_code: cfg.productCode,
-      product_service_charge: '0',
-      product_delivery_charge: '0',
+      product_service_charge: "0",
+      product_delivery_charge: "0",
       success_url: successUrlForForm,
       failure_url: cfg.failureUrl,
       signed_field_names: signedFieldNames,
     };
-    payload.signature = signEsewaPayload(cfg.secretKey, payload, signedFieldNames);
+    payload.signature = signEsewaPayload(
+      cfg.secretKey,
+      payload,
+      signedFieldNames,
+    );
 
     await Payment.findByIdAndUpdate(payment._id, {
       $set: {
-        gatewayProvider: 'eSewa',
+        gatewayProvider: "eSewa",
         gatewayTransactionUuid: transactionUuid,
-        method: 'eSewa',
-        provider: 'eSewa',
+        method: "eSewa",
+        provider: "eSewa",
         updatedBy: req.user?._id,
-        esewaReturnTo: req.user?.role === 'VENDOR' ? 'vendor' : 'staff',
+        esewaReturnTo: "staff",
       },
       $addToSet: { esewaTransactionUuidHistory: transactionUuid },
     });
@@ -336,52 +351,97 @@ router.post(
   },
 );
 
-router.all('/esewa/callback', async (req: AuthRequest, res: Response) => {
+async function tenderEsewaCallbackHandler(
+  req: AuthRequest,
+  res: Response,
+): Promise<void> {
   try {
     const cfg = getEsewaConfigForTenderPayment();
     if (!cfg.secretKey) {
-      return res.status(500).json({ message: 'eSewa not configured', success: false });
+      res
+        .status(500)
+        .json({ message: "eSewa not configured", success: false });
+      return;
     }
+
+    const params = req.params as { paymentId?: string };
+    const paymentIdFromPath =
+      typeof params.paymentId === "string" ? params.paymentId.trim() : "";
 
     const q = req.query as { data?: string; paymentId?: string };
-    const encoded = q.data || (req.body as { data?: string })?.data || '';
-    if (!encoded || typeof encoded !== 'string') {
-      return res.status(400).json({ message: 'Missing callback data', success: false });
+    const bodyData = (req.body as { data?: string } | undefined)?.data;
+    let encoded =
+      (typeof q.data === "string" ? q.data : "") ||
+      (typeof bodyData === "string" ? bodyData : "");
+
+    const rawPid = typeof q.paymentId === "string" ? q.paymentId.trim() : "";
+    let paymentIdFromQuery = "";
+
+    if (!encoded && rawPid.includes("?data=")) {
+      const idx = rawPid.indexOf("?data=");
+      paymentIdFromQuery = rawPid.slice(0, idx).trim();
+      encoded = rawPid.slice(idx + "?data=".length).trim();
+    } else {
+      paymentIdFromQuery = rawPid;
     }
 
-    let decodedString = '';
+    const paymentIdHint =
+      (paymentIdFromPath &&
+      mongoose.Types.ObjectId.isValid(paymentIdFromPath)
+        ? paymentIdFromPath
+        : "") ||
+      (paymentIdFromQuery &&
+      mongoose.Types.ObjectId.isValid(paymentIdFromQuery)
+        ? paymentIdFromQuery
+        : "");
+
+    if (!encoded || typeof encoded !== "string") {
+      res
+        .status(400)
+        .json({ message: "Missing callback data", success: false });
+      return;
+    }
+
+    let decodedString = "";
     let decoded: Record<string, unknown> = {};
     try {
-      decodedString = Buffer.from(encoded, 'base64').toString('utf8');
+      decodedString = Buffer.from(encoded, "base64").toString("utf8");
       decoded = JSON.parse(decodedString) as Record<string, unknown>;
     } catch {
-      return res.status(400).json({ message: 'Invalid callback payload', success: false });
+      res.status(400).json({ message: "Invalid callback payload", success: false });
+      return;
     }
 
     const signedFieldNames = String(
-      decoded.signed_field_names || 'transaction_uuid,total_amount,product_code',
+      decoded.signed_field_names ||
+        "transaction_uuid,total_amount,product_code",
     );
     const expectedSignature = signEsewaPayload(
       cfg.secretKey,
       Object.fromEntries(
-        Object.entries(decoded).map(([k, v]) => [k, v == null ? '' : String(v)]),
+        Object.entries(decoded).map(([k, v]) => [
+          k,
+          v == null ? "" : String(v),
+        ]),
       ),
       signedFieldNames,
     );
-    const isVerified = expectedSignature === String(decoded.signature || '');
+    const isVerified = expectedSignature === String(decoded.signature || "");
     if (!isVerified) {
-      return res.status(400).json({ message: 'Invalid signature', success: false });
+      res.status(400).json({ message: "Invalid signature", success: false });
+      return;
     }
 
-    const transactionUuid = decoded.transaction_uuid == null ? '' : String(decoded.transaction_uuid).trim();
+    const transactionUuid =
+      decoded.transaction_uuid == null
+        ? ""
+        : String(decoded.transaction_uuid).trim();
     if (!transactionUuid) {
-      return res.status(400).json({ message: 'Missing transaction_uuid', success: false });
+      res
+        .status(400)
+        .json({ message: "Missing transaction_uuid", success: false });
+      return;
     }
-
-    const paymentIdFromQuery =
-      typeof q.paymentId === 'string' && mongoose.Types.ObjectId.isValid(q.paymentId.trim())
-        ? q.paymentId.trim()
-        : '';
 
     const payment = await Payment.findOne({
       $or: [
@@ -390,20 +450,32 @@ router.all('/esewa/callback', async (req: AuthRequest, res: Response) => {
       ],
     });
     if (!payment) {
-      return res.status(404).json({ message: 'Payment not found for callback', success: false });
+      res
+        .status(404)
+        .json({ message: "Payment not found for callback", success: false });
+      return;
     }
 
-    if (paymentIdFromQuery && String(payment._id) !== paymentIdFromQuery) {
-      return res.status(400).json({ message: 'paymentId does not match transaction', success: false });
+    if (paymentIdHint && String(payment._id) !== paymentIdHint) {
+      res.status(400).json({
+        message: "paymentId does not match transaction",
+        success: false,
+      });
+      return;
     }
 
-    const decodedProduct = decoded.product_code == null ? '' : String(decoded.product_code).trim();
+    const decodedProduct =
+      decoded.product_code == null ? "" : String(decoded.product_code).trim();
     if (decodedProduct && decodedProduct !== cfg.productCode) {
-      return res.status(400).json({ message: 'product_code mismatch', success: false });
+      res.status(400).json({ message: "product_code mismatch", success: false });
+      return;
     }
 
-    if (!amountsEqualForEsewa(Number(payment.amount || 0), decoded.total_amount)) {
-      return res.status(400).json({ message: 'total_amount mismatch', success: false });
+    if (
+      !amountsEqualForEsewa(Number(payment.amount || 0), decoded.total_amount)
+    ) {
+      res.status(400).json({ message: "total_amount mismatch", success: false });
+      return;
     }
 
     const amount = normalizeAmountString(Number(payment.amount || 0));
@@ -417,33 +489,37 @@ router.all('/esewa/callback', async (req: AuthRequest, res: Response) => {
         transactionUuid,
       });
     } catch {
-      return res
-        .status(502)
-        .json({ message: 'Failed to verify eSewa transaction status', success: false });
+      res.status(502).json({
+        message: "Failed to verify eSewa transaction status",
+        success: false,
+      });
+      return;
     }
 
-    const statusRaw = String(statusCheck?.status || decoded.status || '').toUpperCase();
-    const isSuccess = statusRaw === 'COMPLETE';
+    const statusRaw = String(
+      statusCheck?.status || decoded.status || "",
+    ).toUpperCase();
+    const isSuccess = statusRaw === "COMPLETE";
 
-    payment.gatewayProvider = 'eSewa';
+    payment.gatewayProvider = "eSewa";
     payment.gatewayResponseRaw = decodedString;
     payment.transactionId = String(
       statusCheck?.refId ||
         statusCheck?.ref_id ||
         decoded.transaction_code ||
         payment.transactionId ||
-        '',
+        "",
     );
     payment.paymentDate = isSuccess ? new Date() : payment.paymentDate;
-    payment.status = isSuccess ? 'Completed' : 'Failed';
+    payment.status = isSuccess ? "Completed" : "Failed";
     await payment.save();
 
     if (isSuccess) {
       await ensureDeliveryForTenderPayment(payment).catch((e) =>
-        console.error('ensureDeliveryForTenderPayment', e),
+        console.error("ensureDeliveryForTenderPayment", e),
       );
       await ensureInvoiceForTenderPayment(payment).catch((e) =>
-        console.error('ensureInvoiceForTenderPayment', e),
+        console.error("ensureInvoiceForTenderPayment", e),
       );
     }
 
@@ -451,27 +527,38 @@ router.all('/esewa/callback', async (req: AuthRequest, res: Response) => {
     if (vendorUser) {
       await Notification.create({
         user: vendorUser._id,
-        title: isSuccess ? 'Payment completed' : 'Payment failed',
+        title: isSuccess ? "Invoice generated" : "Payment failed",
         body: isSuccess
-          ? `Your eSewa payment of NPR ${payment.amount} for tender ${payment.tenderReference} is complete. View and download your invoice under Invoices.`
-          : `Your eSewa payment for tender ${payment.tenderReference} failed verification.`,
-        link: isSuccess ? '/invoices' : '/my-payments',
-        type: isSuccess ? 'payment_completed' : 'payment_failed',
+          ? `Payment of NPR ${payment.amount} for tender ${payment.tenderReference} is complete. Your invoice has been generated and is ready under Invoices.`
+          : `Payment for tender ${payment.tenderReference} could not be verified.`,
+        link: isSuccess ? "/invoices" : "/my-payments",
+        type: isSuccess ? "payment_completed" : "payment_failed",
       });
     }
 
     const { clientBaseUrl } = getPublicBaseUrls();
     const returnPath =
-      payment.esewaReturnTo === 'staff' ? '/procurement/payments' : '/my-payments';
+      payment.esewaReturnTo === "vendor"
+        ? "/my-payments"
+        : "/procurement/payments";
     const redirectUrl = new URL(`${clientBaseUrl}${returnPath}`);
-    redirectUrl.searchParams.set('paymentStatus', isSuccess ? 'completed' : 'failed');
-    redirectUrl.searchParams.set('paymentId', String(payment._id));
-    redirectUrl.searchParams.set('transactionUuid', transactionUuid);
-    return res.redirect(302, redirectUrl.toString());
+    redirectUrl.searchParams.set(
+      "paymentStatus",
+      isSuccess ? "completed" : "failed",
+    );
+    redirectUrl.searchParams.set("paymentId", String(payment._id));
+    redirectUrl.searchParams.set("transactionUuid", transactionUuid);
+    res.redirect(302, redirectUrl.toString());
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ message: 'Error processing eSewa callback', success: false });
+    res
+      .status(500)
+      .json({ message: "Error processing eSewa callback", success: false });
   }
-});
+}
+
+/** Path form must be registered first so `/esewa/callback` does not swallow `/esewa/callback/:id`. */
+router.all("/esewa/callback/:paymentId", tenderEsewaCallbackHandler);
+router.all("/esewa/callback", tenderEsewaCallbackHandler);
 
 export default router;

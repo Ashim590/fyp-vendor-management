@@ -20,6 +20,11 @@ import {
 const SIDEBAR_CONFIG = {
   admin: [
     { name: "Dashboard", path: "/admin", icon: LayoutDashboard },
+    {
+      name: "Vendor Registrations",
+      path: "/admin?tab=vendors",
+      icon: Users,
+    },
     { name: "Users", path: "/admin/users", icon: Users },
     { name: "Approvals", path: "/approvals", icon: CheckCircle },
     { name: "Tenders", path: "/tenders", icon: Gavel },
@@ -51,6 +56,12 @@ const SIDEBAR_CONFIG = {
 export function useWorkspaceNavIsActive() {
   const location = useLocation();
   return (path) => {
+    if (path.startsWith("/admin?")) {
+      const q = path.split("?")[1] || "";
+      const expected = new URLSearchParams(q).get("tab");
+      const current = new URLSearchParams(location.search).get("tab");
+      return location.pathname === "/admin" && expected === current;
+    }
     if (path === "/") return location.pathname === "/";
     if (path === "/admin") return location.pathname === "/admin";
     if (path === "/purchase-requests") {
@@ -137,13 +148,13 @@ function SidebarNavLink({
  */
 export function WorkspaceSidebarLinks({ onNavigate, className = "" }) {
   const { user } = useSelector((store) => store.auth);
-  const { notifications, unreadCount } = useNotificationSummary();
+  const { notifications, unreadCount, unreadByType } = useNotificationSummary();
   const isActive = useWorkspaceNavIsActive();
   const links = SIDEBAR_CONFIG[user?.role] || [];
 
   const sectionUnreadCounts = useMemo(
-    () => getUnreadCountsBySidebarPath(notifications, user?.role),
-    [notifications, user?.role],
+    () => getUnreadCountsBySidebarPath(notifications, user?.role, unreadByType),
+    [notifications, user?.role, unreadByType],
   );
 
   if (!user || links.length === 0) return null;

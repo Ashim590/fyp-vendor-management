@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Bell } from "lucide-react";
+import { Bell, Check, X } from "lucide-react";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useNotificationSummary } from "@/context/NotificationSummaryContext";
 import { WorkspacePageLayout } from "../layout/WorkspacePageLayout";
@@ -32,11 +33,37 @@ const NotificationsPage = () => {
     refresh,
     markAsRead,
     markAllRead,
+    dismissNotification,
   } = useNotificationSummary();
 
   useEffect(() => {
     refresh({ silent: true });
   }, [refresh]);
+
+  const handleMarkRead = (e, id) => {
+    e.preventDefault();
+    e.stopPropagation();
+    markAsRead(id);
+  };
+
+  const handleOpenNotification = (id) => {
+    if (id != null) markAsRead(id);
+  };
+
+  const handleDismiss = (e, id) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dismissNotification(id);
+  };
+
+  const targetFor = (n) => {
+    const raw = String(n?.link || "").trim();
+    if (n?.type === "bid_accepted") {
+      const bidParam = raw.match(/[?&]openBid=([a-f\d]{24})/i)?.[1];
+      return bidParam ? `/my-bids?openBid=${bidParam}` : "/my-bids";
+    }
+    return raw;
+  };
 
   return (
     <WorkspacePageLayout className="max-w-3xl pb-10">
@@ -50,9 +77,19 @@ const NotificationsPage = () => {
               Notifications
             </h1>
             <p className="mt-1 text-sm text-slate-600">
-              {unreadCount > 0
-                ? `${unreadCount} unread — open an item to mark it read.`
-                : "You are all caught up."}
+              {unreadCount > 0 ? (
+                <>
+                  <span className="font-semibold text-slate-800">
+                    {unreadCount} unread
+                  </span>
+                  {" — "}
+                  Use <span className="font-medium">Mark as read</span> or{" "}
+                  <span className="font-medium">Dismiss</span> (×) to remove it.
+                  Opening a notification marks it as read automatically.
+                </>
+              ) : (
+                "You are all caught up."
+              )}
             </p>
           </div>
         </div>
@@ -71,49 +108,123 @@ const NotificationsPage = () => {
         {loading ? (
           <p className="py-8 text-center text-sm text-slate-500">Loading...</p>
         ) : notifications.length === 0 ? (
-          <p className="py-8 text-center text-sm text-slate-500">No notifications yet.</p>
+          <p className="py-8 text-center text-sm text-slate-500">
+            No notifications yet.
+          </p>
         ) : (
           <ul className="space-y-2">
             {notifications.map((n) => {
               const unread = !n.read;
               const time = formatRelativeTime(n.createdAt);
               return (
-                <li key={n._id}>
-                  <Link
-                    to={n.link || "#"}
-                    onClick={() => {
-                      if (unread) markAsRead(n._id);
-                    }}
+                <motion.li
+                  key={n._id}
+                  layout
+                  initial={false}
+                  animate={{
+                    opacity: unread ? 1 : 0.72,
+                  }}
+                  transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                >
+                  <div
                     className={cn(
-                      "block rounded-xl px-4 py-3.5 text-left transition-colors",
+                      "flex gap-2 rounded-xl py-1 pl-1 pr-2 transition-colors",
                       unread
-                        ? "border border-teal-200/90 border-l-4 border-l-teal-500 bg-teal-50/95 shadow-sm shadow-teal-900/[0.04] hover:bg-teal-100/85"
-                        : "border border-transparent hover:bg-slate-50",
+                        ? "border border-teal-200/90 border-l-4 border-l-teal-500 bg-teal-50/95 shadow-sm shadow-teal-900/[0.04]"
+                        : "border border-transparent bg-slate-50/40",
                     )}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <p
-                        className={cn(
-                          "min-w-0 flex-1 leading-snug text-slate-900",
-                          unread ? "text-sm font-semibold" : "text-sm font-medium",
-                        )}
-                      >
-                        {n.title}
-                      </p>
-                      {unread ? (
-                        <span className="shrink-0 rounded-full bg-teal-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                          Unread
-                        </span>
-                      ) : null}
+                    <div className="min-w-0 flex-1 px-3 py-2.5">
+                      {targetFor(n) && targetFor(n) !== "#" ? (
+                        <Link
+                          to={targetFor(n)}
+                          onClick={() => handleOpenNotification(n._id)}
+                          className="block text-left outline-none ring-[#0b1f4d] focus-visible:rounded-md focus-visible:ring-2"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <p
+                              className={cn(
+                                "min-w-0 flex-1 leading-snug text-slate-900",
+                                unread
+                                  ? "text-sm font-semibold"
+                                  : "text-sm font-medium",
+                              )}
+                            >
+                              {n.title}
+                            </p>
+                            {unread ? (
+                              <span className="shrink-0 rounded-full bg-teal-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                                Unread
+                              </span>
+                            ) : null}
+                          </div>
+                          {n.body ? (
+                            <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
+                              {n.body}
+                            </p>
+                          ) : null}
+                          {time ? (
+                            <p className="mt-2 text-xs font-medium text-slate-400">
+                              {time}
+                            </p>
+                          ) : null}
+                        </Link>
+                      ) : (
+                        <div className="text-left">
+                          <div className="flex items-start justify-between gap-3">
+                            <p
+                              className={cn(
+                                "min-w-0 flex-1 leading-snug text-slate-900",
+                                unread
+                                  ? "text-sm font-semibold"
+                                  : "text-sm font-medium",
+                              )}
+                            >
+                              {n.title}
+                            </p>
+                            {unread ? (
+                              <span className="shrink-0 rounded-full bg-teal-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                                Unread
+                              </span>
+                            ) : null}
+                          </div>
+                          {n.body ? (
+                            <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
+                              {n.body}
+                            </p>
+                          ) : null}
+                          {time ? (
+                            <p className="mt-2 text-xs font-medium text-slate-400">
+                              {time}
+                            </p>
+                          ) : null}
+                        </div>
+                      )}
                     </div>
-                    {n.body ? (
-                      <p className="mt-1.5 text-sm leading-relaxed text-slate-600">{n.body}</p>
+                    {unread ? (
+                      <div className="flex shrink-0 flex-col items-center justify-center gap-1 border-l border-teal-200/80 py-2 pl-2">
+                        <button
+                          type="button"
+                          aria-label="Mark as read"
+                          title="Mark as read"
+                          onClick={(e) => handleMarkRead(e, n._id)}
+                          className="rounded-lg p-2 text-teal-800 transition-colors hover:bg-teal-200/70"
+                        >
+                          <Check className="h-4 w-4" strokeWidth={2.5} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Dismiss notification"
+                          title="Dismiss"
+                          onClick={(e) => handleDismiss(e, n._id)}
+                          className="rounded-lg p-2 text-slate-600 transition-colors hover:bg-slate-200/80"
+                        >
+                          <X className="h-4 w-4" strokeWidth={2.25} />
+                        </button>
+                      </div>
                     ) : null}
-                    {time ? (
-                      <p className="mt-2 text-xs font-medium text-slate-400">{time}</p>
-                    ) : null}
-                  </Link>
-                </li>
+                  </div>
+                </motion.li>
               );
             })}
           </ul>
