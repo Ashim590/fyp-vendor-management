@@ -2,11 +2,15 @@
   "name": "paropakar-vendornet-backend",
   "version": "1.0.0",
   "main": "dist/server.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "nodemon src/server.ts",
     "dev:clean": "sh -c 'lsof -ti :3000 2>/dev/null | xargs kill -9 2>/dev/null; exec nodemon src/server.ts'",
     "build": "tsc",
     "start": "node dist/server.js",
+    "seed": "ts-node src/scripts/seedDefaultUsers.ts",
     "clear-payments": "ts-node src/scripts/clearPaymentCollections.ts"
   },
   "dependencies": {

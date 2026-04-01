@@ -19,6 +19,14 @@ npm run build
 npm run start
 ```
 
+**Render (or any host with `NODE_ENV=production` during install):** npm omits `devDependencies`, so `tsc` and `@types/*` are missing and `npm run build` fails. Use:
+
+```bash
+npm install --include=dev && npm run build
+```
+
+Set that as the **Build Command** in the Render dashboard if you are not using `render.yaml`.
+
 ## Optional: seed demo users (local / fresh DB)
 
 ```bash

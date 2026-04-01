@@ -34,7 +34,7 @@ From the repo root, `npm run dev` runs backend and frontend together (see root `
 - Backend (Render):
   - Blueprint is included at `render.yaml` (root).
   - Service root directory is `backend`.
-  - Build command: `npm install && npm run build`
+  - Build command: `npm install --include=dev && npm run build` (required when `NODE_ENV=production` so TypeScript and types install)
   - Start command: `npm run start`
   - Health check path: `/api/health`
 
