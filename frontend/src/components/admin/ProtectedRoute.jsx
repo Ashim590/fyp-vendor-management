@@ -67,7 +67,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
         ? allowedRoles
         : [allowedRoles];
       if (!rolesArray.includes(user.role)) {
-        navigate("/unauthorized", { replace: true });
+        navigate("/", { replace: true });
       }
     }
   }, [user, allowedRoles, navigate, storageReady, dispatch]);

@@ -58,23 +58,28 @@ router.post(
         email,
         phoneNumber,
         password,
+        organizationName,
         department,
         designation,
         address,
+        province,
+        district,
         description,
         website,
         category: categoryRaw,
+        panNumber,
         taxId,
+        registrationNumber,
         businessLicense,
         contactPersonName,
         contactPersonEmail,
         contactPersonPhone,
       } = body;
 
-      if (!fullname?.trim() || !email?.trim() || !password) {
+      if (!email?.trim() || !password) {
         return res.status(400).json({
           success: false,
-          message: "Full name, email, and password are required.",
+          message: "Email and password are required.",
         });
       }
       if (!String(phoneNumber || "").trim()) {
@@ -83,11 +88,40 @@ router.post(
           message: "Phone number is required.",
         });
       }
-      const orgName = String(department || "").trim();
+      const orgName = String(organizationName || department || "").trim();
       if (!orgName) {
         return res.status(400).json({
           success: false,
           message: "Organization or company name is required.",
+        });
+      }
+      const panNorm = String(panNumber || taxId || "").trim();
+      if (!panNorm) {
+        return res.status(400).json({
+          success: false,
+          message: "PAN number is required.",
+        });
+      }
+      const regNorm = String(registrationNumber || businessLicense || "").trim();
+      if (!regNorm) {
+        return res.status(400).json({
+          success: false,
+          message: "Registration number is required.",
+        });
+      }
+      const provinceNorm = String(province || "").trim();
+      const districtNorm = String(district || "").trim();
+      if (!provinceNorm || !districtNorm) {
+        return res.status(400).json({
+          success: false,
+          message: "Province and district are required.",
+        });
+      }
+      const addrNorm = String(address || "").trim();
+      if (!addrNorm) {
+        return res.status(400).json({
+          success: false,
+          message: "Address is required.",
         });
       }
 
@@ -101,6 +135,12 @@ router.post(
       const cpName = String(contactPersonName || "").trim();
       const cpEmail = String(contactPersonEmail || "").trim();
       const cpPhone = String(contactPersonPhone || "").trim();
+      if (!cpName || !cpPhone) {
+        return res.status(400).json({
+          success: false,
+          message: "Authorized person name and contact number are required.",
+        });
+      }
       const contactPersonDoc =
         cpName || cpEmail || cpPhone
           ? {
@@ -116,6 +156,15 @@ router.post(
 
       const emailNorm = String(email).toLowerCase().trim();
       const emailQuery = emailMatchFilter(emailNorm);
+      const existingReg = await Vendor.findOne({
+        registrationNumber: regNorm,
+      }).select("_id");
+      if (existingReg) {
+        return res.status(400).json({
+          success: false,
+          message: "Registration number already exists.",
+        });
+      }
 
       const existing = await User.findOne(emailQuery);
       if (existing) {
@@ -148,29 +197,31 @@ router.post(
           name: orgName,
           email: emailNorm,
           phoneNumber: String(phoneNumber).trim(),
+          address: addrNorm,
+          province: provinceNorm,
+          district: districtNorm,
           contactPerson: contactPersonDoc,
           status: "pending",
           isVerified: false,
           category,
-          registrationNumber: generateVendorRegistrationNumber(),
+          registrationNumber: regNorm,
+          panNumber: panNorm,
+          taxId: panNorm,
         };
-        const addr = String(address || "").trim();
-        if (addr) vendorDoc.address = addr;
         const desc = String(description || "").trim();
         if (desc) vendorDoc.description = desc;
         const web = String(website || "").trim();
         if (web) vendorDoc.website = web;
-        const tax = String(taxId || "").trim();
-        if (tax) vendorDoc.taxId = tax;
-        const license = String(businessLicense || "").trim();
-        if (license) vendorDoc.businessLicense = license;
+        vendorDoc.businessLicense = regNorm;
         if (logoData) vendorDoc.logo = logoData;
 
         const vendor = await Vendor.create(vendorDoc);
         rollbackVendorId = String(vendor._id);
 
+        const fallbackUserName =
+          cpName || String(designation || "").trim() || orgName;
         const user = await User.create({
-          name: String(fullname).trim(),
+          name: String(fullname || "").trim() || fallbackUserName,
           email: emailNorm,
           password: hashed,
           role: "VENDOR" as UserRole,

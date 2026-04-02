@@ -8,8 +8,7 @@ import User from "../models/User";
 import Notification from "../models/Notification";
 import { authenticate, authorize, AuthRequest } from "../middleware/auth";
 import { createAudit } from "../utils/auditLog";
-import { ensurePaymentForAwardedBid } from "../utils/tenderAwardPayment";
-import { isVendorApprovedForMarketplace } from "../utils/vendorGate";
+import { vendorMayAccessMarketplace } from "../utils/vendorGate";
 import {
   mergeWithCursorFilter,
   parseListLimit,
@@ -47,6 +46,38 @@ function refId(ref: unknown): string {
   return String(ref);
 }
 
+function hasTenderClosed(tender: { closeDate?: Date | string }): boolean {
+  const close = tender?.closeDate ? new Date(tender.closeDate).getTime() : 0;
+  return Number.isFinite(close) && close > 0 ? Date.now() > close : false;
+}
+
+function normalizeRequiredDocuments(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((x) => String(x || "").trim()).filter(Boolean);
+}
+
+function parseOptionalAmount(raw: unknown): number | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function roundMoney2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function missingRequiredDocuments(
+  required: string[],
+  docs: Array<{ name?: string }>,
+): string[] {
+  if (!required.length) return [];
+  const names = docs.map((d) => String(d?.name || "").toLowerCase());
+  return required.filter((need) => {
+    const n = need.toLowerCase();
+    return !names.some((name) => name.includes(n));
+  });
+}
+
 router.post(
   "/",
   authenticate,
@@ -69,6 +100,37 @@ router.post(
         });
       }
 
+      const amountNum = Number(amount);
+      if (!Number.isFinite(amountNum) || amountNum <= 0) {
+        return res.status(400).json({
+          message: "A valid quoted total amount is required.",
+          success: false,
+        });
+      }
+
+      const excl = parseOptionalAmount(
+        (req.body as Record<string, unknown>).amountExcludingVat,
+      );
+      const vatAmt = parseOptionalAmount(
+        (req.body as Record<string, unknown>).vatAmount,
+      );
+      const vatRateVal = parseOptionalAmount(
+        (req.body as Record<string, unknown>).vatRate,
+      );
+
+      let grand = roundMoney2(amountNum);
+      if (excl !== undefined && vatAmt !== undefined) {
+        const sum = roundMoney2(excl + vatAmt);
+        if (Math.abs(sum - grand) > 0.02) {
+          return res.status(400).json({
+            message:
+              "Quoted total does not match amount excluding VAT plus VAT.",
+            success: false,
+          });
+        }
+        grand = sum;
+      }
+
       const proposalText = String(proposal || technicalProposal || "").trim();
       if (!proposalText) {
         return res.status(400).json({
@@ -77,7 +139,9 @@ router.post(
         });
       }
 
-      const tender = await Tender.findById(tenderId);
+      const tender = await Tender.findById(tenderId).select(
+        "_id title referenceNumber status closeDate requiredDocuments",
+      );
       if (!tender) {
         return res
           .status(404)
@@ -99,8 +163,16 @@ router.post(
       }
 
       const vendorId = req.user.vendorProfile;
-      const vendorDoc = await Vendor.findById(vendorId);
-      if (!vendorDoc || !isVendorApprovedForMarketplace(vendorDoc)) {
+      const mayBid = await vendorMayAccessMarketplace(vendorId);
+      if (!mayBid) {
+        return res.status(403).json({
+          message:
+            "Vendor is not approved yet. Ask your NGO administrator to approve your registration.",
+          success: false,
+        });
+      }
+      const vendorDoc = await Vendor.findById(vendorId).select("name").lean();
+      if (!vendorDoc) {
         return res.status(403).json({
           message:
             "Vendor is not approved yet. Ask your NGO administrator to approve your registration.",
@@ -112,29 +184,87 @@ router.post(
         tender: tenderId,
         vendor: vendorId,
       });
-      if (existing) {
-        return res.status(400).json({
-          message: "You have already submitted a quotation for this tender.",
-          success: false,
-        });
-      }
 
       const files = (req.files as Express.Multer.File[] | undefined) || [];
-      const documents = files.map((f) => ({
+      const uploadedDocuments = files.map((f) => ({
         name: f.originalname || "attachment",
         url: fileToDataUrl(f),
         uploadedAt: new Date(),
       }));
 
-      const bid = await Bid.create({
-        tender: tenderId,
-        vendor: vendorId,
-        amount: Number(amount),
-        technicalProposal: proposalText,
-        financialProposal: String(financialProposal || "").trim(),
-        documents,
-        status: "SUBMITTED",
-      });
+      const mergedDocuments = existing
+        ? uploadedDocuments.length
+          ? uploadedDocuments
+          : (existing.documents || [])
+        : uploadedDocuments;
+
+      const requiredDocs = normalizeRequiredDocuments(
+        (tender as unknown as { requiredDocuments?: unknown }).requiredDocuments,
+      );
+      const missingDocs = missingRequiredDocuments(requiredDocs, mergedDocuments);
+      if (missingDocs.length > 0) {
+        return res.status(400).json({
+          message: `Missing required documents: ${missingDocs.join(", ")}`,
+          success: false,
+          missingRequiredDocuments: missingDocs,
+        });
+      }
+
+      let bid;
+      let isFirstSubmission = false;
+      if (existing) {
+        if (hasTenderClosed(tender)) {
+          return res.status(400).json({
+            message: "Tender deadline has passed. Quotation can no longer be edited.",
+            success: false,
+          });
+        }
+        if (existing.status === "ACCEPTED" || existing.status === "REJECTED") {
+          return res.status(400).json({
+            message: "This quotation is finalized and cannot be edited.",
+            success: false,
+          });
+        }
+        existing.versionHistory = existing.versionHistory || [];
+        existing.versionHistory.push({
+          editedAt: new Date(),
+          editedBy: req.user!._id as any,
+          amount: Number(existing.amount || 0),
+          technicalProposal: String(existing.technicalProposal || ""),
+          financialProposal: String(existing.financialProposal || ""),
+          documents: (existing.documents || []).map((d) => ({
+            name: d.name,
+            url: d.url,
+            uploadedAt: d.uploadedAt || new Date(),
+          })),
+        } as any);
+        existing.amount = grand;
+        existing.amountExcludingVat = excl;
+        existing.vatAmount = vatAmt;
+        existing.vatRate = vatRateVal;
+        existing.technicalProposal = proposalText;
+        existing.financialProposal = String(financialProposal || "").trim();
+        existing.documents = mergedDocuments as any;
+        existing.isDraft = false;
+        if (!existing.submittedAt) existing.submittedAt = new Date();
+        bid = await existing.save();
+      } else {
+        isFirstSubmission = true;
+        bid = await Bid.create({
+          tender: tenderId,
+          vendor: vendorId,
+          amount: grand,
+          amountExcludingVat: excl,
+          vatAmount: vatAmt,
+          vatRate: vatRateVal,
+          technicalProposal: proposalText,
+          financialProposal: String(financialProposal || "").trim(),
+          documents: mergedDocuments,
+          status: "SUBMITTED",
+          isDraft: false,
+          submittedAt: new Date(),
+        });
+      }
 
       await createAudit({
         req,
@@ -149,8 +279,15 @@ router.post(
         details: { tenderId: tender._id, amount: bid.amount },
       });
 
-      // Notify all procurement officers + admins (and tender creator if not already included)
+      // Notify staff only on first submission (not for edits).
       try {
+        if (!isFirstSubmission) {
+          return res.status(200).json({
+            message: "Quotation updated successfully.",
+            bid,
+            success: true,
+          });
+        }
         const staffUsers = await User.find({
           role: { $in: ["ADMIN", "PROCUREMENT_OFFICER"] },
           isActive: true,
@@ -202,6 +339,181 @@ router.post(
   },
 );
 
+router.post(
+  "/draft",
+  authenticate,
+  authorize(["VENDOR"]),
+  bidUpload.array("documents", 10),
+  async (req: AuthRequest, res) => {
+    try {
+      const { tenderId, amount, proposal, technicalProposal, financialProposal } =
+        req.body as Record<string, string | undefined>;
+      const exclDraft = parseOptionalAmount(
+        (req.body as Record<string, unknown>).amountExcludingVat,
+      );
+      const vatAmtDraft = parseOptionalAmount(
+        (req.body as Record<string, unknown>).vatAmount,
+      );
+      const vatRateDraft = parseOptionalAmount(
+        (req.body as Record<string, unknown>).vatRate,
+      );
+
+      let resolvedGrand: number | undefined;
+      if (amount !== undefined && String(amount).trim() !== "") {
+        const n = Number(amount);
+        if (!Number.isFinite(n) || n < 0) {
+          return res.status(400).json({ message: "Invalid amount.", success: false });
+        }
+        resolvedGrand = roundMoney2(n);
+        if (exclDraft !== undefined && vatAmtDraft !== undefined) {
+          const sum = roundMoney2(exclDraft + vatAmtDraft);
+          if (Math.abs(sum - resolvedGrand) > 0.02) {
+            return res.status(400).json({
+              message: "Total does not match amount excluding VAT plus VAT.",
+              success: false,
+            });
+          }
+          resolvedGrand = sum;
+        }
+      }
+
+      if (!tenderId) {
+        return res.status(400).json({ message: "Tender ID is required.", success: false });
+      }
+      const tender = await Tender.findById(tenderId).select("_id status closeDate");
+      if (!tender) {
+        return res.status(404).json({ message: "Tender not found.", success: false });
+      }
+      if (tender.status !== "PUBLISHED") {
+        return res.status(400).json({
+          message: "Tender is not open for quotations.",
+          success: false,
+        });
+      }
+      if (hasTenderClosed(tender)) {
+        return res.status(400).json({
+          message: "Tender deadline has passed.",
+          success: false,
+        });
+      }
+      if (!req.user?.vendorProfile) {
+        return res.status(400).json({
+          message: "No vendor profile linked. Complete vendor registration first.",
+          success: false,
+        });
+      }
+
+      const mayBid = await vendorMayAccessMarketplace(req.user.vendorProfile);
+      if (!mayBid) {
+        return res.status(403).json({
+          message: "Vendor is not approved yet.",
+          success: false,
+        });
+      }
+
+      const files = (req.files as Express.Multer.File[] | undefined) || [];
+      const uploadedDocuments = files.map((f) => ({
+        name: f.originalname || "attachment",
+        url: fileToDataUrl(f),
+        uploadedAt: new Date(),
+      }));
+      const proposalText = String(proposal || technicalProposal || "").trim();
+
+      const existing = await Bid.findOne({
+        tender: tenderId,
+        vendor: req.user.vendorProfile,
+      });
+      if (existing && (existing.status === "ACCEPTED" || existing.status === "REJECTED")) {
+        return res.status(400).json({
+          message: "This quotation is finalized and cannot be edited.",
+          success: false,
+        });
+      }
+
+      let draft;
+      if (existing) {
+        existing.versionHistory = existing.versionHistory || [];
+        existing.versionHistory.push({
+          editedAt: new Date(),
+          editedBy: req.user!._id as any,
+          amount: Number(existing.amount || 0),
+          technicalProposal: String(existing.technicalProposal || ""),
+          financialProposal: String(existing.financialProposal || ""),
+          documents: (existing.documents || []).map((d) => ({
+            name: d.name,
+            url: d.url,
+            uploadedAt: d.uploadedAt || new Date(),
+          })),
+        } as any);
+        if (resolvedGrand !== undefined) {
+          existing.amount = resolvedGrand;
+          existing.amountExcludingVat = exclDraft;
+          existing.vatAmount = vatAmtDraft;
+          existing.vatRate = vatRateDraft;
+        }
+        existing.technicalProposal = proposalText || String(existing.technicalProposal || "");
+        existing.financialProposal = String(
+          financialProposal || existing.financialProposal || "",
+        ).trim();
+        if (uploadedDocuments.length > 0) {
+          existing.documents = uploadedDocuments as any;
+        }
+        existing.isDraft = true;
+        draft = await existing.save();
+      } else {
+        draft = await Bid.create({
+          tender: tenderId,
+          vendor: req.user.vendorProfile,
+          amount: resolvedGrand ?? Number(amount || 0),
+          amountExcludingVat: exclDraft,
+          vatAmount: vatAmtDraft,
+          vatRate: vatRateDraft,
+          technicalProposal: proposalText,
+          financialProposal: String(financialProposal || "").trim(),
+          documents: uploadedDocuments,
+          status: "SUBMITTED",
+          isDraft: true,
+        });
+      }
+
+      return res.json({
+        message: "Draft saved.",
+        bid: draft,
+        success: true,
+      });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ message: "Failed to save draft.", success: false });
+    }
+  },
+);
+
+router.get(
+  "/draft/:tenderId",
+  authenticate,
+  authorize(["VENDOR"]),
+  async (req: AuthRequest, res) => {
+    try {
+      if (!req.user?.vendorProfile) return res.json({ bid: null, success: true });
+      const bid = await Bid.findOne({
+        tender: req.params.tenderId,
+        vendor: req.user.vendorProfile,
+      })
+        .select(
+          "tender vendor amount amountExcludingVat vatAmount vatRate technicalProposal financialProposal documents status isDraft versionHistory updatedAt submittedAt",
+        )
+        .lean();
+      if (!bid || !bid.isDraft) {
+        return res.json({ bid: null, success: true });
+      }
+      return res.json({ bid, success: true });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ message: "Failed to load draft.", success: false });
+    }
+  },
+);
+
 router.get(
   "/my",
   authenticate,
@@ -211,8 +523,8 @@ router.get(
       return res.json({ bids: [], success: true });
     }
 
-    const vendorDoc = await Vendor.findById(req.user.vendorProfile);
-    if (!isVendorApprovedForMarketplace(vendorDoc)) {
+    const mayBid = await vendorMayAccessMarketplace(req.user.vendorProfile);
+    if (!mayBid) {
       return res.json({ bids: [], success: true });
     }
 
@@ -231,7 +543,7 @@ router.get(
       .sort({ createdAt: -1, _id: -1 })
       .limit(pageLimit + 1)
       .select(
-        "tender vendor amount status score technicalProposal financialProposal createdAt updatedAt",
+        "tender vendor amount amountExcludingVat vatAmount vatRate status score technicalProposal financialProposal documents isDraft submittedAt versionHistory createdAt updatedAt",
       )
       .lean();
     const { items, nextCursor, hasMore } = trimExtraDoc(raw, pageLimit);
@@ -248,8 +560,8 @@ router.get(
       return res.json([]);
     }
 
-    const vendorDoc = await Vendor.findById(req.user.vendorProfile);
-    if (!isVendorApprovedForMarketplace(vendorDoc)) {
+    const mayBid = await vendorMayAccessMarketplace(req.user.vendorProfile);
+    if (!mayBid) {
       return res.json([]);
     }
     const pageLimit = parseListLimit(req.query.limit, 25, 100);
@@ -266,6 +578,9 @@ router.get(
       .populate("tender", "title referenceNumber status closeDate")
       .sort({ createdAt: -1, _id: -1 })
       .limit(pageLimit + 1)
+      .select(
+        "tender vendor amount amountExcludingVat vatAmount vatRate status score technicalProposal financialProposal documents isDraft submittedAt versionHistory createdAt updatedAt",
+      )
       .lean();
     const { items, nextCursor, hasMore } = trimExtraDoc(raw, pageLimit);
     res.json({ bids: items, nextCursor, hasMore });
@@ -337,7 +652,7 @@ router.get(
         .sort({ amount: 1, createdAt: -1 })
         .limit(150)
         .select(
-          "tender vendor amount status score technicalProposal financialProposal documents createdAt updatedAt rejectionReason",
+          "tender vendor amount amountExcludingVat vatAmount vatRate status score technicalProposal financialProposal documents createdAt updatedAt rejectionReason",
         )
         .lean();
 
@@ -391,7 +706,7 @@ router.patch(
     const { status, score } = req.body;
     if (status === "ACCEPTED") {
       return res.status(400).json({
-        message: "Use PATCH /:id/accept to award a quotation.",
+        message: "Use PATCH /:id/accept to select a preferred quotation.",
         success: false,
       });
     }
@@ -426,19 +741,45 @@ router.patch(
           .json({ message: "Tender not found", success: false });
       }
 
+      if (tenderDoc.status === "AWARDED") {
+        return res.status(400).json({
+          message:
+            "This tender is already awarded. Selection cannot be changed here.",
+          success: false,
+        });
+      }
+
+      if (tenderDoc.status !== "PUBLISHED" && tenderDoc.status !== "CLOSED") {
+        return res.status(400).json({
+          message:
+            "Quotations can only be selected while the tender is published or closed.",
+          success: false,
+        });
+      }
+
+      if (
+        !["SUBMITTED", "UNDER_REVIEW", "REJECTED", "ACCEPTED"].includes(
+          bid.status,
+        )
+      ) {
+        return res.status(400).json({
+          message: "This quotation cannot be selected in its current state.",
+          success: false,
+        });
+      }
+
       await Bid.updateMany(
-        { tender: tenderDoc._id, _id: { $ne: bid._id } },
-        { status: "REJECTED" },
+        {
+          tender: tenderDoc._id,
+          status: "ACCEPTED",
+          _id: { $ne: bid._id },
+        },
+        { $set: { status: "UNDER_REVIEW" } },
       );
 
       bid.status = "ACCEPTED";
+      if (bid.rejectionReason) bid.rejectionReason = "";
       await bid.save();
-
-      tenderDoc.status = "AWARDED";
-      tenderDoc.awardedVendor = new mongoose.Types.ObjectId(refId(bid.vendor));
-      await tenderDoc.save();
-
-      await ensurePaymentForAwardedBid(bid, tenderDoc, req.user?._id);
 
       const vendorUser = await User.findOne({
         vendorProfile: new mongoose.Types.ObjectId(refId(bid.vendor)),
@@ -446,9 +787,9 @@ router.patch(
       if (vendorUser) {
         await Notification.create({
           user: vendorUser._id,
-          title: "Quotation accepted",
-          body: `Your quotation for "${tenderDoc.title}" was accepted and the tender has been awarded to you.`,
-          link: `/tenders/${tenderDoc._id}`,
+          title: "Quotation selected",
+          body: `Your quotation for "${tenderDoc.title}" was selected as the preferred offer. Procurement may finalize the award in a separate step.`,
+          link: `/my-bids?openBid=${bid._id}`,
           type: "bid_accepted",
         });
       }
@@ -459,7 +800,7 @@ router.patch(
         entityType: "bid",
         entityId: bid._id,
         entityName: String(bid._id),
-        description: "Quotation accepted and tender awarded",
+        description: "Preferred quotation selected (tender not awarded yet)",
         module: "bids",
         subModule: "accept",
         status: "success",
@@ -471,7 +812,7 @@ router.patch(
       console.error(err);
       return res
         .status(500)
-        .json({ message: "Failed to accept bid", success: false });
+        .json({ message: "Failed to select quotation", success: false });
     }
   },
 );

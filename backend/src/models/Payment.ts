@@ -11,6 +11,7 @@ export interface IPayment extends Document {
   bid?: mongoose.Types.ObjectId;
   vendor: mongoose.Types.ObjectId;
   vendorName: string;
+  vendorRegistrationNumber?: string;
   amount: number;
   status: PaymentStatus;
   method: PaymentMethod;
@@ -44,6 +45,7 @@ const PaymentSchema: Schema<IPayment> = new Schema(
     bid: { type: Schema.Types.ObjectId, ref: "Bid" },
     vendor: { type: Schema.Types.ObjectId, ref: "Vendor", required: true },
     vendorName: { type: String, required: true, trim: true },
+    vendorRegistrationNumber: { type: String, trim: true, default: "" },
     amount: { type: Number, default: 0, min: 0 },
     status: {
       type: String,

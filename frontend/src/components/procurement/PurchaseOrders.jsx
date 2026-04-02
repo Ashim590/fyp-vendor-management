@@ -146,7 +146,7 @@ const PurchaseOrders = () => {
                     <TableCell>
                       <div className="flex items-center gap-1">
                         <FileText className="h-4 w-4 text-gray-400" />
-                        {order.items?.length || 0} items
+                        {order.itemsCount ?? order.items?.length ?? 0} items
                       </div>
                     </TableCell>
                     <TableCell className="font-medium">

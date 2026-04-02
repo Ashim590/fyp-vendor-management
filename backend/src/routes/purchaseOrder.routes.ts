@@ -11,6 +11,47 @@ import {
 
 const router = express.Router();
 
+async function aggregatePurchaseOrderListPage(
+  merged: Record<string, unknown>,
+  pageLimit: number,
+) {
+  const prColl = PurchaseRequest.collection.collectionName;
+  const raw = await PurchaseOrder.aggregate([
+    { $match: merged },
+    { $sort: { createdAt: -1, _id: -1 } },
+    { $limit: pageLimit + 1 },
+    {
+      $project: {
+        orderNumber: 1,
+        purchaseRequest: 1,
+        vendor: 1,
+        vendorName: 1,
+        totalAmount: 1,
+        deliveryDate: 1,
+        status: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        itemsCount: { $size: { $ifNull: ['$items', []] } },
+      },
+    },
+    {
+      $lookup: {
+        from: prColl,
+        localField: 'purchaseRequest',
+        foreignField: '_id',
+        as: '_pr',
+        pipeline: [{ $project: { requestNumber: 1 } }],
+      },
+    },
+    { $addFields: { purchaseRequest: { $arrayElemAt: ['$_pr', 0] } } },
+    { $project: { _pr: 0 } },
+  ]);
+  return trimExtraDoc(
+    raw as Array<{ createdAt?: Date; _id: unknown }>,
+    pageLimit,
+  );
+}
+
 router.post(
   '/create',
   authenticate,
@@ -46,21 +87,20 @@ router.get(
     const pageLimit = parseListLimit(req.query.limit, 40, 100);
     const cursor =
       typeof req.query.cursor === 'string' ? req.query.cursor : undefined;
+    const base: Record<string, unknown> = {};
+    if (req.user?.role === 'VENDOR' && req.user.vendorProfile) {
+      base.vendor = req.user.vendorProfile;
+    }
     let merged: Record<string, unknown>;
     try {
-      merged = mergeWithCursorFilter({}, cursor);
+      merged = mergeWithCursorFilter(base, cursor);
     } catch {
       return res.status(400).json({ success: false, message: 'Invalid cursor' });
     }
-    const raw = await PurchaseOrder.find(merged)
-      .sort({ createdAt: -1, _id: -1 })
-      .limit(pageLimit + 1)
-      .select(
-        'orderNumber purchaseRequest vendor vendorName items totalAmount deliveryDate status createdAt updatedAt',
-      )
-      .populate('purchaseRequest', 'requestNumber')
-      .lean();
-    const { items, nextCursor, hasMore } = trimExtraDoc(raw, pageLimit);
+    const { items, nextCursor, hasMore } = await aggregatePurchaseOrderListPage(
+      merged,
+      pageLimit,
+    );
     res.json({ success: true, purchaseOrders: items, nextCursor, hasMore });
   }
 );

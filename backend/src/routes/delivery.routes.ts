@@ -108,7 +108,7 @@ router.get(
       const raw = await Delivery.find(merged)
         .sort({ createdAt: -1, _id: -1 })
         .limit(pageLimit + 1)
-        .select('-statusHistory')
+        .select("-statusHistory -items")
         .lean();
       const { items, nextCursor, hasMore } = trimExtraDoc(raw, pageLimit);
       res.json({ success: true, deliveries: items, nextCursor, hasMore });
@@ -146,7 +146,7 @@ router.get(
       const raw = await Delivery.find(merged)
         .sort({ createdAt: -1, _id: -1 })
         .limit(pageLimit + 1)
-        .select('-statusHistory')
+        .select("-statusHistory -items")
         .lean();
       const { items, nextCursor, hasMore } = trimExtraDoc(raw, pageLimit);
       res.json({ success: true, deliveries: items, nextCursor, hasMore });

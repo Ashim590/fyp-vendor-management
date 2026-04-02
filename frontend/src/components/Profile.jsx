@@ -27,15 +27,25 @@ const Profile = () => {
     name: "",
     email: "",
     phoneNumber: "",
-    profilePhoto: "",
   });
+  const [profilePhotoFile, setProfilePhotoFile] = useState(null);
+  const [removeProfilePhoto, setRemoveProfilePhoto] = useState(false);
   const [vendorForm, setVendorForm] = useState({
     companyName: "",
     companyEmail: "",
     companyPhone: "",
     address: "",
+    province: "",
+    district: "",
     website: "",
     description: "",
+    businessCategory: "other",
+    panNumber: "",
+    registrationNumber: "",
+    authorizedPersonName: "",
+    authorizedPersonEmail: "",
+    authorizedPersonPhone: "",
+    settlementEsewaId: "",
   });
   const [securityForm, setSecurityForm] = useState({
     currentPassword: "",
@@ -74,16 +84,29 @@ const Profile = () => {
           name: me?.name || "",
           email: me?.email || "",
           phoneNumber: me?.phoneNumber || "",
-          profilePhoto: me?.profilePhoto || "",
         });
+        setProfilePhotoFile(null);
+        setRemoveProfilePhoto(false);
         const vendorProfile = me?.vendorProfile || {};
         setVendorForm({
           companyName: vendorProfile?.name || "",
           companyEmail: vendorProfile?.email || "",
           companyPhone: vendorProfile?.phoneNumber || "",
           address: vendorProfile?.address || "",
+          province: vendorProfile?.province || "",
+          district: vendorProfile?.district || "",
           website: vendorProfile?.website || "",
           description: vendorProfile?.description || "",
+          businessCategory: vendorProfile?.category || "other",
+          panNumber: vendorProfile?.panNumber || vendorProfile?.taxId || "",
+          registrationNumber:
+            vendorProfile?.registrationNumber ||
+            vendorProfile?.businessLicense ||
+            "",
+          authorizedPersonName: vendorProfile?.contactPerson?.name || "",
+          authorizedPersonEmail: vendorProfile?.contactPerson?.email || "",
+          authorizedPersonPhone: vendorProfile?.contactPerson?.phone || "",
+          settlementEsewaId: vendorProfile?.bankDetails?.esewaId || "",
         });
         dispatch(
           setUser({
@@ -109,9 +132,29 @@ const Profile = () => {
     e.preventDefault();
     try {
       setSavingInfo(true);
-      const res = await axios.patch("/api/users/me", personalForm);
+      let payload = personalForm;
+      let config = undefined;
+      if (profilePhotoFile) {
+        const fd = new FormData();
+        fd.append("name", String(personalForm.name || ""));
+        fd.append("email", String(personalForm.email || ""));
+        fd.append("phoneNumber", String(personalForm.phoneNumber || ""));
+        fd.append("profilePhoto", profilePhotoFile);
+        payload = fd;
+        config = {
+          headers: { "Content-Type": "multipart/form-data" },
+        };
+      } else if (removeProfilePhoto) {
+        payload = {
+          ...personalForm,
+          profilePhoto: "",
+        };
+      }
+      const res = await axios.patch("/api/users/me", payload, config);
       const me = res?.data?.user;
       setProfile(me);
+      setProfilePhotoFile(null);
+      setRemoveProfilePhoto(false);
       dispatch(
         setUser({
           ...(user || {}),
@@ -169,17 +212,32 @@ const Profile = () => {
     if (!isVendor) return;
     try {
       setSavingVendorInfo(true);
-      await axios.put("/api/v1/vendor/me", {
+      const res = await axios.put("/api/v1/vendor/me", {
         name: vendorForm.companyName,
         email: vendorForm.companyEmail,
         phoneNumber: vendorForm.companyPhone,
         address: vendorForm.address,
+        province: vendorForm.province,
+        district: vendorForm.district,
         website: vendorForm.website,
         description: vendorForm.description,
+        category: vendorForm.businessCategory,
+        panNumber: vendorForm.panNumber,
+        registrationNumber: vendorForm.registrationNumber,
+        contactPerson: {
+          name: vendorForm.authorizedPersonName,
+          email: vendorForm.authorizedPersonEmail,
+          phone: vendorForm.authorizedPersonPhone,
+        },
+        settlementEsewaId: vendorForm.settlementEsewaId,
       });
-      const refreshed = await axios.get("/api/users/me");
-      const me = refreshed?.data?.user;
-      setProfile(me);
+      const updatedVendor = res?.data?.vendor;
+      if (updatedVendor) {
+        setProfile((prev) => ({
+          ...(prev || {}),
+          vendorProfile: updatedVendor,
+        }));
+      }
       toast.success("Company details updated");
     } catch (error) {
       toast.error(error?.response?.data?.message || "Failed to update company details");
@@ -191,12 +249,17 @@ const Profile = () => {
   const onProfilePhotoFile = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const value = String(reader.result || "");
-      setPersonalForm((p) => ({ ...p, profilePhoto: value }));
-    };
-    reader.readAsDataURL(file);
+    setProfilePhotoFile(file);
+    setRemoveProfilePhoto(false);
+  };
+
+  const onRemovePhoto = () => {
+    setProfilePhotoFile(null);
+    setRemoveProfilePhoto(true);
+    setProfile((prev) => ({
+      ...(prev || {}),
+      profilePhoto: "",
+    }));
   };
 
   const roleLabel = isAdmin ? "Administrator" : isStaff ? "Procurement Officer" : "Vendor";
@@ -227,7 +290,7 @@ const Profile = () => {
         <section className="rounded-3xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
           <div className="flex items-center gap-4">
             <Avatar className="h-16 w-16">
-              <AvatarImage src={personalForm.profilePhoto || profile?.profilePhoto || ""} alt={profile?.name || "Admin"} />
+              <AvatarImage src={profile?.profilePhoto || ""} alt={profile?.name || "Admin"} />
               <AvatarFallback>{String(profile?.name || "A").charAt(0).toUpperCase()}</AvatarFallback>
             </Avatar>
             <div>
@@ -259,15 +322,21 @@ const Profile = () => {
               onChange={(e) => setPersonalForm((p) => ({ ...p, phoneNumber: e.target.value }))}
               placeholder="Phone number"
             />
-            <Input
-              value={personalForm.profilePhoto}
-              onChange={(e) => setPersonalForm((p) => ({ ...p, profilePhoto: e.target.value }))}
-              placeholder="Profile photo URL"
-            />
             <Input type="file" accept="image/*" onChange={onProfilePhotoFile} />
-            <Button type="submit" disabled={savingInfo || loading}>
-              {savingInfo ? "Saving..." : "Save Changes"}
-            </Button>
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                className="text-slate-600"
+                onClick={onRemovePhoto}
+                disabled={!profile?.profilePhoto && !profilePhotoFile}
+              >
+                Remove Photo
+              </Button>
+              <Button type="submit" disabled={savingInfo || loading}>
+                {savingInfo ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
           </form>
 
           <form onSubmit={onChangePassword} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
@@ -304,7 +373,19 @@ const Profile = () => {
               <Input type="email" value={vendorForm.companyEmail} onChange={(e) => setVendorForm((p) => ({ ...p, companyEmail: e.target.value }))} placeholder="Company email" />
               <Input value={vendorForm.companyPhone} onChange={(e) => setVendorForm((p) => ({ ...p, companyPhone: e.target.value }))} placeholder="Company phone" />
               <Input value={vendorForm.address} onChange={(e) => setVendorForm((p) => ({ ...p, address: e.target.value }))} placeholder="Address" />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input value={vendorForm.province} onChange={(e) => setVendorForm((p) => ({ ...p, province: e.target.value }))} placeholder="Province" />
+                <Input value={vendorForm.district} onChange={(e) => setVendorForm((p) => ({ ...p, district: e.target.value }))} placeholder="District" />
+              </div>
+              <Input value={vendorForm.panNumber} onChange={(e) => setVendorForm((p) => ({ ...p, panNumber: e.target.value }))} placeholder="PAN number" />
+              <Input value={vendorForm.registrationNumber} onChange={(e) => setVendorForm((p) => ({ ...p, registrationNumber: e.target.value }))} placeholder="Registration number" />
               <Input value={vendorForm.website} onChange={(e) => setVendorForm((p) => ({ ...p, website: e.target.value }))} placeholder="Website" />
+              <Input value={vendorForm.authorizedPersonName} onChange={(e) => setVendorForm((p) => ({ ...p, authorizedPersonName: e.target.value }))} placeholder="Authorized person name" />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input type="email" value={vendorForm.authorizedPersonEmail} onChange={(e) => setVendorForm((p) => ({ ...p, authorizedPersonEmail: e.target.value }))} placeholder="Authorized person email" />
+                <Input value={vendorForm.authorizedPersonPhone} onChange={(e) => setVendorForm((p) => ({ ...p, authorizedPersonPhone: e.target.value }))} placeholder="Authorized person phone" />
+              </div>
+              <Input value={vendorForm.settlementEsewaId} onChange={(e) => setVendorForm((p) => ({ ...p, settlementEsewaId: e.target.value }))} placeholder="eSewa settlement ID (Tier 2)" />
               <Input value={vendorForm.description} onChange={(e) => setVendorForm((p) => ({ ...p, description: e.target.value }))} placeholder="Description" />
               <Button type="submit" disabled={savingVendorInfo || loading}>
                 {savingVendorInfo ? "Saving..." : "Save Company Info"}

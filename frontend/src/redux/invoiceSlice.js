@@ -7,10 +7,10 @@ function axiosErrorMessage(error, fallback) {
   if (apiMsg) return typeof apiMsg === "string" ? apiMsg : fallback;
   const code = error?.code;
   if (code === "ECONNREFUSED" || code === "ERR_NETWORK") {
-    return "Cannot reach the API. Start the backend (e.g. port 3000) and ensure Vite proxies /api to it.";
+    return "Cannot reach the server. Try again later.";
   }
   if (error?.message === "Network Error") {
-    return "Network error — check that the backend is running and VITE_PROXY_TARGET matches your API port.";
+    return "Network error. Check your connection.";
   }
   if (typeof error?.message === "string" && error.message) return error.message;
   return fallback;

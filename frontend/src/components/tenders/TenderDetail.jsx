@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import {
   TENDER_API_END_POINT,
@@ -7,7 +7,6 @@ import {
   PAYMENT_API_END_POINT,
 } from "@/utils/constant";
 import { getAuthHeaderFromStorage } from "@/utils/authHeader";
-import { EsewaPaymentForm } from "@/components/payment/EsewaPaymentForm";
 import { useSelector } from "react-redux";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -30,6 +29,7 @@ const statusConfig = {
 const TenderDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useSelector((store) => store.auth);
   const [tender, setTender] = useState(null);
   const [bids, setBids] = useState([]);
@@ -39,13 +39,21 @@ const TenderDetail = () => {
   const [confirmConfig, setConfirmConfig] = useState(null);
   const [staffTenderPayments, setStaffTenderPayments] = useState([]);
   const [myTenderPayment, setMyTenderPayment] = useState(null);
-  const [paymentCheckout, setPaymentCheckout] = useState(null);
   const [paymentBusy, setPaymentBusy] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [clarifications, setClarifications] = useState([]);
+  const [questionText, setQuestionText] = useState("");
+  const [answerDrafts, setAnswerDrafts] = useState({});
+  const [questionBusy, setQuestionBusy] = useState(false);
 
   const isOfficerOrAdmin = user?.role === "admin" || user?.role === "staff";
   const isAdmin = user?.role === "admin";
   const isOfficer = user?.role === "staff";
   const isVendor = user?.role === "vendor";
+
+  const staffCanSelectOrAward =
+    tender &&
+    (tender.status === "PUBLISHED" || tender.status === "CLOSED");
 
   const sortedQuotations = useMemo(
     () => [...bids].sort((a, b) => Number(a.amount) - Number(b.amount)),
@@ -59,10 +67,19 @@ const TenderDetail = () => {
   };
 
   const loadTender = () => {
+    setLoading(true);
+    setLoadError("");
     axios
       .get(`${TENDER_API_END_POINT}/${id}`, { withCredentials: true })
       .then((res) => setTender(res.data.tender))
-      .catch(() => setTender(null))
+      .catch((err) => {
+        setTender(null);
+        setLoadError(
+          err?.response?.data?.message ||
+            err?.message ||
+            "Could not load this tender.",
+        );
+      })
       .finally(() => setLoading(false));
   };
 
@@ -94,6 +111,16 @@ const TenderDetail = () => {
       .catch(() => setMyBid(null));
   };
 
+  const loadClarifications = () => {
+    if (!id) return;
+    axios
+      .get(`${TENDER_API_END_POINT}/${id}/clarifications`, {
+        withCredentials: true,
+      })
+      .then((res) => setClarifications(res.data?.clarifications || []))
+      .catch(() => setClarifications([]));
+  };
+
   useEffect(() => {
     loadTender();
   }, [id]);
@@ -105,6 +132,19 @@ const TenderDetail = () => {
   useEffect(() => {
     loadMyBid();
   }, [id, isVendor, tender?._id]);
+
+  useEffect(() => {
+    if (!tender?._id) return;
+    loadClarifications();
+  }, [tender?._id, isVendor, isOfficerOrAdmin]);
+
+  useEffect(() => {
+    if (location.hash !== "#my-quotation") return;
+    if (!myBid) return;
+    const el = document.getElementById("my-quotation");
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [location.hash, myBid]);
 
   useEffect(() => {
     if (!tender?._id || tender.status !== "AWARDED") {
@@ -161,7 +201,9 @@ const TenderDetail = () => {
         },
         { withCredentials: true, headers: getAuthHeaderFromStorage() },
       );
-      toast.success("Payment request created. The vendor can pay via eSewa.");
+      toast.success(
+        "Payment request created. Complete eSewa from Procurement → Payments when ready.",
+      );
       const res = await axios.get(`${PAYMENT_API_END_POINT}`, {
         params: { tenderId: tender._id },
         withCredentials: true,
@@ -176,29 +218,6 @@ const TenderDetail = () => {
       );
     } finally {
       setPaymentBusy(false);
-    }
-  };
-
-  const startTenderEsewa = async (paymentId) => {
-    try {
-      const { data } = await axios.post(
-        `${PAYMENT_API_END_POINT}/${paymentId}/esewa/initiate`,
-        {},
-        {
-          withCredentials: true,
-          headers: getAuthHeaderFromStorage(),
-        },
-      );
-      if (!data?.success || !data.checkoutUrl || !data.payload) {
-        throw new Error(data?.message || "Could not start eSewa");
-      }
-      setPaymentCheckout({ checkoutUrl: data.checkoutUrl, payload: data.payload });
-    } catch (err) {
-      toast.error(
-        err?.response?.data?.message ||
-          err?.message ||
-          "Could not open eSewa checkout.",
-      );
     }
   };
 
@@ -312,14 +331,12 @@ const TenderDetail = () => {
     });
   };
 
-  const openAcceptBidConfirm = (bidId) => {
-    const bid = bids.find((b) => String(b._id) === String(bidId));
+  const openSelectBidConfirm = (bidId) => {
     setConfirmConfig({
-      title: "Accept this quotation?",
-      description:
-        "This will mark this quotation as selected and award the tender to this vendor.",
+      title: "Select this quotation?",
+      description: "",
       variant: "default",
-      confirmLabel: "Accept",
+      confirmLabel: "Select",
       action: async () => {
         try {
           const token = localStorage.getItem("token");
@@ -329,7 +346,7 @@ const TenderDetail = () => {
             {},
             { withCredentials: true, headers },
           );
-          toast.success("Quotation accepted. Tender awarded.");
+          toast.success("Preferred quotation selected. Award the tender when ready.");
           setConfirmConfig(null);
           loadTender();
           loadBids();
@@ -338,7 +355,41 @@ const TenderDetail = () => {
           const msg =
             err?.response?.data?.message ||
             err?.message ||
-            "Failed to accept quotation.";
+            "Failed to select quotation.";
+          toast.error(msg);
+        }
+      },
+    });
+  };
+
+  const openAwardTenderConfirm = () => {
+    if (!acceptedBid || !tender?._id) return;
+    const vendorName = acceptedBid.vendor?.name || "this vendor";
+    setConfirmConfig({
+      title: "Award this tender?",
+      description: `This will finalize the award to ${vendorName}, mark other quotations as not selected, and record the payment step. After this, change who won only with administrator help if needed.`,
+      variant: "default",
+      confirmLabel: "Award tender",
+      action: async () => {
+        try {
+          const token = localStorage.getItem("token");
+          const headers = token ? { Authorization: `Bearer ${token}` } : {};
+          const vid = acceptedBid.vendor?._id || acceptedBid.vendor;
+          const res = await axios.patch(
+            `${TENDER_API_END_POINT}/${tender._id}/award`,
+            { awardedVendor: vid },
+            { withCredentials: true, headers },
+          );
+          if (res.data?.tender) setTender(res.data.tender);
+          toast.success("Tender awarded.");
+          setConfirmConfig(null);
+          loadTender();
+          loadBids();
+        } catch (err) {
+          const msg =
+            err?.response?.data?.message ||
+            err?.message ||
+            "Failed to award tender.";
           toast.error(msg);
         }
       },
@@ -393,7 +444,56 @@ const TenderDetail = () => {
     loadMyBid();
   };
 
-  if (loading || !tender) {
+  const submitClarificationQuestion = async () => {
+    const q = String(questionText || "").trim();
+    if (!q) {
+      toast.error("Please enter your question.");
+      return;
+    }
+    setQuestionBusy(true);
+    try {
+      await axios.post(
+        `${TENDER_API_END_POINT}/${id}/clarifications`,
+        { question: q },
+        { withCredentials: true },
+      );
+      setQuestionText("");
+      toast.success("Question posted.");
+      loadClarifications();
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Failed to post question.",
+      );
+    } finally {
+      setQuestionBusy(false);
+    }
+  };
+
+  const answerClarification = async (clarificationId) => {
+    const answer = String(answerDrafts?.[clarificationId] || "").trim();
+    if (!answer) {
+      toast.error("Please enter an answer.");
+      return;
+    }
+    try {
+      await axios.patch(
+        `${TENDER_API_END_POINT}/${id}/clarifications/${clarificationId}/answer`,
+        { answer },
+        { withCredentials: true },
+      );
+      toast.success("Answer posted.");
+      setAnswerDrafts((prev) => ({ ...prev, [clarificationId]: "" }));
+      loadClarifications();
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "Failed to post clarification answer.",
+      );
+    }
+  };
+
+  if (loading) {
     return (
       <motion.div
         initial={{ opacity: 0, y: 10 }}
@@ -410,6 +510,37 @@ const TenderDetail = () => {
             <div className="pt-4 border-t space-y-2">
               <LoadingSkeleton className="h-4 w-28" />
               <LoadingSkeleton className="h-20 w-full" />
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  if (!tender) {
+    const sp = new URLSearchParams(location.search);
+    const bidParam = sp.get("bid");
+    const backToMyBid = bidParam
+      ? `/my-bids?openBid=${encodeURIComponent(bidParam)}`
+      : "/my-bids";
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, ease: "easeOut" }}
+      >
+        <div className="max-w-3xl mx-auto p-4 sm:p-6">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+            <p className="text-sm font-medium text-amber-900">
+              {loadError || "Tender could not be loaded."}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button variant="outline" onClick={loadTender}>
+                Retry
+              </Button>
+              <Button variant="ghost" asChild>
+                <Link to={backToMyBid}>Back to My tender quotations</Link>
+              </Button>
             </div>
           </div>
         </div>
@@ -467,6 +598,19 @@ const TenderDetail = () => {
                   {tender.requirements}
                 </p>
               )}
+              {Array.isArray(tender.requiredDocuments) &&
+                tender.requiredDocuments.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-sm font-medium text-slate-700">
+                      Required documents:
+                    </p>
+                    <ul className="mt-1 list-disc pl-5 text-sm text-slate-600">
+                      {tender.requiredDocuments.map((d) => (
+                        <li key={d}>{d}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
             </div>
             <div className="flex flex-wrap gap-2 justify-end">
               {isOfficerOrAdmin && tender.status === "DRAFT" && (
@@ -482,12 +626,12 @@ const TenderDetail = () => {
                   Delete tender
                 </Button>
               )}
-              {isOfficer && tender.status === "PUBLISHED" && (
+              {isOfficerOrAdmin && tender.status === "PUBLISHED" && (
                 <Button variant="outline" onClick={openWithdrawTenderConfirm}>
                   Withdraw tender
                 </Button>
               )}
-              {isOfficer && tender.status === "DRAFT" && (
+              {isOfficerOrAdmin && tender.status === "DRAFT" && (
                 <Button variant="outline" onClick={openWithdrawTenderConfirm}>
                   Withdraw draft
                 </Button>
@@ -499,6 +643,27 @@ const TenderDetail = () => {
               )}
             </div>
           </div>
+
+          {isOfficer &&
+            acceptedBid &&
+            staffCanSelectOrAward &&
+            tender.status !== "AWARDED" && (
+              <div className="mt-4 rounded-lg border border-teal-200 bg-teal-50/60 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-slate-800">
+                  <span className="font-medium">Preferred quotation:</span>{" "}
+                  {acceptedBid.vendor?.name || "Vendor"} — NPR{" "}
+                  {Number(acceptedBid.amount).toLocaleString("en-NP")}. Award
+                  the tender to finalize and record payment.
+                </p>
+                <Button
+                  type="button"
+                  className="bg-slate-900 hover:bg-slate-800 shrink-0"
+                  onClick={openAwardTenderConfirm}
+                >
+                  Award tender
+                </Button>
+              </div>
+            )}
 
           {canBid && (
             <div className="mt-6 pt-4 border-t">
@@ -512,6 +677,7 @@ const TenderDetail = () => {
               ) : (
                 <SubmitBidForm
                   tenderId={tender._id}
+                  tender={tender}
                   onSuccess={onBidSubmitted}
                   onCancel={() => setShowBidForm(false)}
                 />
@@ -519,24 +685,66 @@ const TenderDetail = () => {
             </div>
           )}
 
-          {isVendor &&
-            myBid &&
-            myBid.status === "SUBMITTED" &&
-            tender.status === "PUBLISHED" && (
-              <div className="mt-6 pt-4 border-t flex flex-wrap items-center gap-3">
-                <p className="text-sm text-slate-600">
-                  Your quotation:{" "}
-                  <span className="font-semibold text-slate-900">
-                    NPR {Number(myBid.amount).toLocaleString("en-NP")}
-                  </span>
-                  <Badge className="ml-2" variant="outline">
-                    {myBid.status === "ACCEPTED"
-                      ? "Accepted"
-                      : myBid.status === "REJECTED"
-                        ? "Not selected"
+          {isVendor && myBid && (
+            <div id="my-quotation" className="mt-6 pt-4 border-t space-y-3 scroll-mt-24">
+              <p className="text-sm text-slate-600">
+                Your quotation:{" "}
+                <span className="font-semibold text-slate-900">
+                  NPR {Number(myBid.amount).toLocaleString("en-NP")}
+                </span>
+                <Badge className="ml-2" variant="outline">
+                  {myBid.status === "ACCEPTED"
+                    ? tender?.status === "AWARDED" && isAwardedVendor
+                      ? "Awarded"
+                      : "Selected"
+                    : myBid.status === "REJECTED"
+                      ? "Not selected"
+                      : myBid.status === "UNDER_REVIEW"
+                        ? "Under review"
                         : "Pending"}
-                  </Badge>
-                </p>
+                </Badge>
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+                    Proposal
+                  </p>
+                  <p className="text-sm text-slate-700 whitespace-pre-wrap rounded-md bg-slate-50 p-3 border min-h-[4rem]">
+                    {myBid.technicalProposal?.trim() ? myBid.technicalProposal : "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+                    Financial / pricing notes
+                  </p>
+                  <p className="text-sm text-slate-700 whitespace-pre-wrap rounded-md bg-slate-50 p-3 border min-h-[4rem]">
+                    {myBid.financialProposal?.trim() ? myBid.financialProposal : "—"}
+                  </p>
+                </div>
+              </div>
+              {Array.isArray(myBid.documents) && myBid.documents.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
+                    Attachments
+                  </p>
+                  <ul className="flex flex-wrap gap-2">
+                    {myBid.documents.map((doc, idx) => (
+                      <li key={`${myBid._id}-doc-${idx}`}>
+                        <a
+                          href={doc.url}
+                          download={doc.name || "attachment"}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-teal-700 hover:underline"
+                        >
+                          {doc.name || `File ${idx + 1}`}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {myBid.status === "SUBMITTED" && tender.status === "PUBLISHED" && (
                 <Button
                   variant="destructive"
                   size="sm"
@@ -544,8 +752,105 @@ const TenderDetail = () => {
                 >
                   Withdraw quotation
                 </Button>
-              </div>
-            )}
+              )}
+              {Array.isArray(myBid.versionHistory) &&
+                myBid.versionHistory.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
+                      Version history
+                    </p>
+                    <ul className="space-y-2">
+                      {myBid.versionHistory
+                        .slice()
+                        .reverse()
+                        .map((v, idx) => (
+                          <li
+                            key={`vh-${idx}`}
+                            className="rounded-md border bg-slate-50 px-3 py-2 text-xs text-slate-600"
+                          >
+                            Edited {new Date(v.editedAt).toLocaleString("en-NP")} •
+                            Previous amount NPR{" "}
+                            {Number(v.amount || 0).toLocaleString("en-NP")}
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                )}
+            </div>
+          )}
+
+          {(isVendor || isOfficerOrAdmin) && (
+            <div className="mt-6 pt-4 border-t space-y-3">
+              <h3 className="text-base font-semibold text-slate-900">
+                Clarifications / Q&A
+              </h3>
+              {isVendor && tender.status === "PUBLISHED" && (
+                <div className="space-y-2">
+                  <textarea
+                    value={questionText}
+                    onChange={(e) => setQuestionText(e.target.value)}
+                    rows={2}
+                    placeholder="Ask a clarification question for procurement staff."
+                    className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={submitClarificationQuestion}
+                    disabled={questionBusy}
+                  >
+                    {questionBusy ? "Posting..." : "Post question"}
+                  </Button>
+                </div>
+              )}
+              {clarifications.length === 0 ? (
+                <p className="text-sm text-slate-500">No clarifications yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {clarifications.map((c) => (
+                    <div key={c._id} className="rounded-md border bg-slate-50 p-3">
+                      <p className="text-sm text-slate-800">{c.question}</p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Asked by {c?.vendorUser?.name || "Vendor"} on{" "}
+                        {c?.askedAt ? new Date(c.askedAt).toLocaleString("en-NP") : "—"}
+                      </p>
+                      {c.answer ? (
+                        <p className="mt-2 text-sm text-teal-800">
+                          <span className="font-medium">Answer:</span> {c.answer}
+                        </p>
+                      ) : isOfficerOrAdmin ? (
+                        <div className="mt-2 space-y-2">
+                          <textarea
+                            value={answerDrafts[c._id] || ""}
+                            onChange={(e) =>
+                              setAnswerDrafts((prev) => ({
+                                ...prev,
+                                [c._id]: e.target.value,
+                              }))
+                            }
+                            rows={2}
+                            placeholder="Write public answer for all bidders."
+                            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+                          />
+                          <Button
+                            size="sm"
+                            type="button"
+                            onClick={() => answerClarification(c._id)}
+                          >
+                            Post answer
+                          </Button>
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-xs text-amber-700">
+                          Awaiting procurement response.
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {isOfficerOrAdmin && (
@@ -557,7 +862,7 @@ const TenderDetail = () => {
               <p className="text-sm text-slate-500 mt-1">
                 {isAdmin && !isOfficer
                   ? "Read-only monitoring. Procurement officers evaluate and award quotations."
-                  : "Compare quotations by price and proposal. Accept one to proceed."}
+                  : "Compare quotations by price and proposal. Select a preferred offer, then use Award tender to finalize."}
               </p>
             </div>
 
@@ -567,7 +872,7 @@ const TenderDetail = () => {
                   <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
                     <tr>
                       <th className="px-3 py-2">Vendor</th>
-                      <th className="px-3 py-2 text-right">Price (NPR)</th>
+                      <th className="px-3 py-2 text-right">Total (incl. VAT)</th>
                       <th className="px-3 py-2">Status</th>
                       <th className="px-3 py-2">Proposal</th>
                     </tr>
@@ -582,7 +887,13 @@ const TenderDetail = () => {
                           {bid.vendor?.name || "—"}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums">
-                          {Number(bid.amount).toLocaleString("en-NP")}
+                          <div>{Number(bid.amount).toLocaleString("en-NP")}</div>
+                          {bid.vatAmount != null &&
+                            Number(bid.vatAmount) > 0 && (
+                              <div className="text-[10px] text-slate-500 font-normal">
+                                incl. VAT
+                              </div>
+                            )}
                         </td>
                         <td className="px-3 py-2">
                           <Badge
@@ -600,7 +911,11 @@ const TenderDetail = () => {
                               ? "Pending"
                               : bid.status === "UNDER_REVIEW"
                                 ? "Under review"
-                                : bid.status}
+                                : bid.status === "ACCEPTED"
+                                  ? tender?.status === "AWARDED"
+                                    ? "Awarded"
+                                    : "Selected"
+                                  : bid.status}
                           </Badge>
                         </td>
                         <td className="px-3 py-2 text-slate-600 max-w-xs">
@@ -633,9 +948,20 @@ const TenderDetail = () => {
                           </p>
                         )}
                         <p className="text-base text-slate-800 font-medium">
-                          Quoted price: NPR{" "}
+                          Total (incl. VAT): NPR{" "}
                           {Number(bid.amount).toLocaleString("en-NP")}
                         </p>
+                        {bid.amountExcludingVat != null &&
+                          bid.vatAmount != null && (
+                            <p className="text-xs text-slate-500">
+                              Excl. VAT: NPR{" "}
+                              {Number(bid.amountExcludingVat).toLocaleString(
+                                "en-NP",
+                              )}{" "}
+                              · VAT: NPR{" "}
+                              {Number(bid.vatAmount).toLocaleString("en-NP")}
+                            </p>
+                          )}
                         <p className="text-xs text-slate-500">
                           Submitted:{" "}
                           {bid.createdAt
@@ -651,7 +977,11 @@ const TenderDetail = () => {
                                 : "bg-slate-200 text-slate-800"
                           }
                         >
-                          {bid.status}
+                          {bid.status === "ACCEPTED"
+                            ? tender?.status === "AWARDED"
+                              ? "Awarded"
+                              : "Selected"
+                            : bid.status}
                         </Badge>
                         {bid.status === "REJECTED" && bid.rejectionReason && (
                           <p className="text-xs text-red-700 mt-1">
@@ -661,7 +991,7 @@ const TenderDetail = () => {
                       </div>
                       <div className="flex flex-wrap gap-2 shrink-0 justify-end">
                         {isOfficer &&
-                          tender.status === "PUBLISHED" &&
+                          staffCanSelectOrAward &&
                           (bid.status === "SUBMITTED" ||
                             bid.status === "UNDER_REVIEW") && (
                             <>
@@ -691,9 +1021,9 @@ const TenderDetail = () => {
                               <Button
                                 size="sm"
                                 className="bg-emerald-600 hover:bg-emerald-700"
-                                onClick={() => openAcceptBidConfirm(bid._id)}
+                                onClick={() => openSelectBidConfirm(bid._id)}
                               >
-                                Accept
+                                Select
                               </Button>
                               <Button
                                 size="sm"
@@ -703,6 +1033,17 @@ const TenderDetail = () => {
                                 Not selected
                               </Button>
                             </>
+                          )}
+                        {isOfficer &&
+                          staffCanSelectOrAward &&
+                          bid.status === "ACCEPTED" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleRejectBid(bid._id)}
+                            >
+                              Not selected
+                            </Button>
                           )}
                         {(isAdmin || isOfficer) && (
                           <Button
@@ -769,19 +1110,7 @@ const TenderDetail = () => {
 
         {tender.status === "AWARDED" && (
           <div className="bg-white rounded-lg border p-4 sm:p-6 mt-6 space-y-3">
-            <h2 className="text-lg font-semibold text-slate-900">Tender payment (eSewa)</h2>
-            <p className="text-sm text-slate-600">
-              When a quotation is accepted, a pending payment is created automatically. It
-              shows under{" "}
-              <Link className="font-medium text-teal-700 underline-offset-2 hover:underline" to="/procurement/payments">
-                Payments
-              </Link>{" "}
-              (staff) and{" "}
-              <Link className="font-medium text-teal-700 underline-offset-2 hover:underline" to="/my-payments">
-                My payments
-              </Link>{" "}
-              (vendor). The vendor pays with eSewa from there or below.
-            </p>
+            <h2 className="text-lg font-semibold text-slate-900">Tender payment</h2>
             {isOfficerOrAdmin && (
               <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-4 text-sm">
                 {staffTenderPayments.length > 0 ? (
@@ -804,9 +1133,8 @@ const TenderDetail = () => {
                 ) : acceptedBid ? (
                   <div className="flex flex-wrap items-center gap-3">
                     <p className="text-slate-700">
-                      No payment row yet (unusual). Quoted NPR{" "}
-                      {Number(acceptedBid.amount).toLocaleString("en-NP")}. You can create one
-                      manually.
+                      No payment yet. Quoted NPR{" "}
+                      {Number(acceptedBid.amount).toLocaleString("en-NP")}.
                     </p>
                     <Button
                       type="button"
@@ -827,29 +1155,25 @@ const TenderDetail = () => {
                 {!myTenderPayment ? (
                   <div className="space-y-2 text-slate-700">
                     <p>
-                      Your payment should appear shortly after award. Open{" "}
                       <Link
                         className="font-medium text-teal-800 underline-offset-2 hover:underline"
                         to="/my-payments"
                       >
                         My payments
-                      </Link>{" "}
-                      to pay with eSewa, or refresh this page.
+                      </Link>
                     </p>
                   </div>
                 ) : myTenderPayment.status === "Pending" ? (
-                  <div className="flex flex-wrap items-center gap-3">
-                    <p className="text-slate-800">
-                      Amount due: NPR{" "}
-                      {Number(myTenderPayment.amount).toLocaleString("en-NP")}
+                  <div className="space-y-2 text-slate-800">
+                    <p>
+                      Amount recorded: NPR{" "}
+                      {Number(myTenderPayment.amount).toLocaleString("en-NP")} — status{" "}
+                      <span className="font-semibold">Pending</span>.
                     </p>
-                    <Button
-                      type="button"
-                      onClick={() => startTenderEsewa(myTenderPayment._id)}
-                      className="bg-emerald-600 hover:bg-emerald-700"
-                    >
-                      Pay with eSewa
-                    </Button>
+                    <p className="text-slate-600">
+                      You cannot pay from the vendor portal. Procurement completes payment;
+                      check <Link className="font-medium text-teal-800 underline-offset-2 hover:underline" to="/my-payments">My payments</Link> for updates.
+                    </p>
                   </div>
                 ) : (
                   <p className="text-slate-800">
@@ -862,13 +1186,6 @@ const TenderDetail = () => {
           </div>
         )}
 
-        {paymentCheckout && (
-          <EsewaPaymentForm
-            checkoutUrl={paymentCheckout.checkoutUrl}
-            payload={paymentCheckout.payload}
-            onCancel={() => setPaymentCheckout(null)}
-          />
-        )}
       </div>
     </motion.div>
   );

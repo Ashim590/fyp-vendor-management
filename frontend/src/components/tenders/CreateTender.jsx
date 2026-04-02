@@ -16,6 +16,7 @@ const CreateTender = () => {
     category: "",
     budget: "",
     requirements: "",
+    requiredDocuments: "",
     status: "DRAFT",
   });
 
@@ -37,6 +38,10 @@ const CreateTender = () => {
         {
           ...form,
           budget: form.budget ? Number(form.budget) : undefined,
+          requiredDocuments: form.requiredDocuments
+            .split(/\r?\n|,/)
+            .map((x) => x.trim())
+            .filter(Boolean),
         },
         { withCredentials: true }
       );
@@ -133,6 +138,22 @@ const CreateTender = () => {
               rows={2}
               className="w-full border rounded px-3 py-2"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Required documents checklist (optional)
+            </label>
+            <textarea
+              name="requiredDocuments"
+              value={form.requiredDocuments}
+              onChange={handleChange}
+              rows={3}
+              placeholder="PAN Certificate, Company Registration, VAT Certificate"
+              className="w-full border rounded px-3 py-2"
+            />
+            <p className="text-xs text-slate-500 mt-1">
+              Vendors must upload documents matching these names before final submission.
+            </p>
           </div>
           <div className="flex gap-3 pt-4">
             <Button type="submit" disabled={loading} className="bg-slate-900 hover:bg-slate-800">

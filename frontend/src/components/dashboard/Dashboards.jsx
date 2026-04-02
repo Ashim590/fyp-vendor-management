@@ -333,7 +333,7 @@ export const StaffDashboard = () => {
     },
     {
       name: "Payments",
-      desc: "Tender eSewa payments & status",
+      desc: "Tender payments",
       icon: Banknote,
       link: "/procurement/payments",
     },

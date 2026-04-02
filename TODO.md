@@ -25,9 +25,9 @@
 
 The backend was already properly configured with:
 
-1. **User Model** (`backend/models/user.model.js`)
-   - `role` field with enum: ["admin", "staff", "vendor"]
-2. **Role Auth Middleware** (`backend/middlewares/roleAuth.js`)
+1. **User Model** (`backend/src/models/User.ts`)
+   - `role` field with enum: `ADMIN`, `PROCUREMENT_OFFICER`, `VENDOR`
+2. **Auth / authorization** (`backend/src/middleware/auth.ts`)
 
    - `roleAuth(...roles)` - Restricts access by role
    - Returns 401 for unauthenticated users

@@ -12,6 +12,8 @@ import {
 } from "../utils/cursorPagination";
 import { bustAuthUserCache } from "../utils/authUserCache";
 import { invalidateAdminDashboardCache } from "../utils/adminDashboardCache";
+import { bustVendorMarketplaceGateCache } from "../utils/vendorGate";
+import { bustVendorDashboardSummaryCache } from "../utils/vendorDashboardSummaryCache";
 
 const router = Router();
 
@@ -127,6 +129,8 @@ router.patch("/:id/verify", async (req: AuthRequest, res) => {
     });
 
     invalidateAdminDashboardCache();
+    bustVendorMarketplaceGateCache(String(vendor._id));
+    bustVendorDashboardSummaryCache(String(vendor._id));
 
     return res.json({
       ...vendor.toObject(),

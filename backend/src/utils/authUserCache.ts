@@ -4,10 +4,11 @@
  */
 import type { IUser } from '../models/User';
 
-const ttlParsed = parseInt(process.env.AUTH_USER_CACHE_MS || '20000', 10);
+/** Longer default avoids repeated auth DB reads on every navigation. */
+const ttlParsed = parseInt(process.env.AUTH_USER_CACHE_MS || '300000', 10);
 const TTL_MS = Number.isFinite(ttlParsed)
-  ? Math.min(120_000, Math.max(5_000, ttlParsed))
-  : 20_000;
+  ? Math.min(1_800_000, Math.max(10_000, ttlParsed))
+  : 300_000;
 const SHORT_TTL_MS = 5_000;
 
 type Entry = { exp: number; user: IUser };

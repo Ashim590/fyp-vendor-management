@@ -9,6 +9,13 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 import { toast } from "sonner";
 import { useNavigate, Link, useParams } from "react-router-dom";
 import { ArrowLeft, Plus, Trash2, Save } from "lucide-react";
@@ -88,8 +95,21 @@ const PurchaseRequests = () => {
   const handleItemChange = (index, field, value) => {
     setItems((prevItems) => {
       const newItems = [...prevItems];
-      if (field === "quantity") value = parseInt(value) || 0;
-      if (field === "estimatedUnitPrice") value = parseFloat(value) || 0;
+      if (field === "quantity") value = parseInt(value, 10) || 0;
+      if (field === "estimatedUnitPrice") {
+        const s = String(value).trim();
+        if (s === "" || s === ".") {
+          value = 0;
+        } else {
+          let t = s.replace(",", "");
+          // Strip leading zeros so "05" / "050" become "5" / "50"; keep "0.5", "0.05"
+          if (/^0+\d/.test(t) && !/^\./.test(t)) {
+            t = t.replace(/^0+/, "") || "0";
+          }
+          const n = parseFloat(t);
+          value = Number.isFinite(n) ? n : newItems[index][field];
+        }
+      }
       newItems[index][field] = value;
       return newItems;
     });
@@ -259,17 +279,22 @@ const PurchaseRequests = () => {
 
               <div>
                 <Label>Priority</Label>
-                <select
-                  name="priority"
+                <Select
                   value={formData.priority}
-                  onChange={handleInputChange}
-                  className="w-full border rounded-md px-3 py-2"
+                  onValueChange={(v) =>
+                    setFormData((prev) => ({ ...prev, priority: v }))
+                  }
                 >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
-                </select>
+                  <SelectTrigger className="w-full border-slate-200 bg-white">
+                    <SelectValue placeholder="Priority" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -343,9 +368,12 @@ const PurchaseRequests = () => {
                     <div>
                       <Label>Quantity *</Label>
                       <Input
-                        type="number"
-                        min="1"
-                        value={item.quantity}
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        placeholder="1"
+                        className="tabular-nums"
+                        value={item.quantity === 0 ? "" : String(item.quantity)}
                         onChange={(e) =>
                           handleItemChange(index, "quantity", e.target.value)
                         }
@@ -355,28 +383,38 @@ const PurchaseRequests = () => {
 
                     <div>
                       <Label>Unit</Label>
-                      <select
+                      <Select
                         value={item.unit}
-                        onChange={(e) =>
-                          handleItemChange(index, "unit", e.target.value)
+                        onValueChange={(v) =>
+                          handleItemChange(index, "unit", v)
                         }
-                        className="w-full border rounded-md px-3 py-2"
                       >
-                        <option value="pieces">Pieces</option>
-                        <option value="kg">Kg</option>
-                        <option value="liters">Liters</option>
-                        <option value="boxes">Boxes</option>
-                        <option value="other">Other</option>
-                      </select>
+                        <SelectTrigger className="w-full border-slate-200 bg-white">
+                          <SelectValue placeholder="Unit" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pieces">Pieces</SelectItem>
+                          <SelectItem value="kg">Kg</SelectItem>
+                          <SelectItem value="liters">Liters</SelectItem>
+                          <SelectItem value="boxes">Boxes</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     <div>
                       <Label>Est. Unit Price</Label>
                       <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.estimatedUnitPrice}
+                        type="text"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        placeholder="0"
+                        className="tabular-nums"
+                        value={
+                          item.estimatedUnitPrice === 0
+                            ? ""
+                            : String(item.estimatedUnitPrice)
+                        }
                         onChange={(e) =>
                           handleItemChange(
                             index,
@@ -391,18 +429,22 @@ const PurchaseRequests = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                     <div>
                       <Label>Category</Label>
-                      <select
+                      <Select
                         value={item.category}
-                        onChange={(e) =>
-                          handleItemChange(index, "category", e.target.value)
+                        onValueChange={(v) =>
+                          handleItemChange(index, "category", v)
                         }
-                        className="w-full border rounded-md px-3 py-2"
                       >
-                        <option value="office">Office</option>
-                        <option value="it">IT</option>
-                        <option value="maintenance">Maintenance</option>
-                        <option value="other">Other</option>
-                      </select>
+                        <SelectTrigger className="w-full border-slate-200 bg-white">
+                          <SelectValue placeholder="Category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="office">Office</SelectItem>
+                          <SelectItem value="it">IT</SelectItem>
+                          <SelectItem value="maintenance">Maintenance</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     <div className="text-right font-medium flex items-center justify-end">

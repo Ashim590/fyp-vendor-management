@@ -13,6 +13,10 @@ import {
 
 const router = express.Router();
 
+/** Fields needed for Approvals UI + PR detail links (avoids excluding nested paths). */
+const APPROVAL_LIST_PROJECTION =
+  'approvalNumber entityType entityId purchaseRequest requester requesterName requesterDepartment title amount currency priority status createdAt updatedAt currentApprover approverRole';
+
 const generateTenderRef = () =>
   'TDR-' +
   Date.now().toString(36).toUpperCase() +
@@ -79,7 +83,7 @@ router.get(
       const raw = await Approval.find(merged)
         .sort({ createdAt: -1, _id: -1 })
         .limit(pageLimit + 1)
-        .select('-description -comments -approvalHistory')
+        .select(APPROVAL_LIST_PROJECTION)
         .lean();
       const { items, nextCursor, hasMore } = trimExtraDoc(raw, pageLimit);
       res.json({ success: true, approvals: items, nextCursor, hasMore });
@@ -94,37 +98,47 @@ router.get(
   }
 );
 
+async function listAllApprovalsHandler(req: AuthRequest, res: express.Response) {
+  try {
+    const pageLimit = parseListLimit(req.query.limit, 40, 100);
+    const cursor =
+      typeof req.query.cursor === 'string' ? req.query.cursor : undefined;
+    let merged: Record<string, unknown>;
+    try {
+      merged = mergeWithCursorFilter({}, cursor);
+    } catch {
+      return res.status(400).json({ success: false, message: 'Invalid cursor' });
+    }
+    const raw = await Approval.find(merged)
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(pageLimit + 1)
+      .select(APPROVAL_LIST_PROJECTION)
+      .lean();
+    const { items, nextCursor, hasMore } = trimExtraDoc(raw, pageLimit);
+    res.json({ success: true, approvals: items, nextCursor, hasMore });
+  } catch (err: any) {
+    console.error('GET approvals list', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Error fetching approvals.',
+      error: err?.message
+    });
+  }
+}
+
+/** Explicit path so clients never rely on mounted-router `GET /` matching quirks. */
+router.get(
+  '/list',
+  authenticate,
+  authorize(['ADMIN', 'PROCUREMENT_OFFICER']),
+  listAllApprovalsHandler
+);
+
 router.get(
   '/',
   authenticate,
-  authorize(['ADMIN', 'PROCUREMENT_OFFICER', 'VENDOR']),
-  async (req: AuthRequest, res) => {
-    try {
-      const pageLimit = parseListLimit(req.query.limit, 40, 100);
-      const cursor =
-        typeof req.query.cursor === 'string' ? req.query.cursor : undefined;
-      let merged: Record<string, unknown>;
-      try {
-        merged = mergeWithCursorFilter({}, cursor);
-      } catch {
-        return res.status(400).json({ success: false, message: 'Invalid cursor' });
-      }
-      const raw = await Approval.find(merged)
-        .sort({ createdAt: -1, _id: -1 })
-        .limit(pageLimit + 1)
-        .select('-description -comments -approvalHistory')
-        .lean();
-      const { items, nextCursor, hasMore } = trimExtraDoc(raw, pageLimit);
-      res.json({ success: true, approvals: items, nextCursor, hasMore });
-    } catch (err: any) {
-      console.error('GET / approvals', err);
-      return res.status(500).json({
-        success: false,
-        message: 'Error fetching approvals.',
-        error: err?.message
-      });
-    }
-  }
+  authorize(['ADMIN', 'PROCUREMENT_OFFICER']),
+  listAllApprovalsHandler
 );
 
 router.get(
@@ -138,6 +152,9 @@ router.get(
       res.json({ success: true, approval });
     } catch (err: any) {
       console.error('GET /:id approval', err);
+      if (err?.name === 'CastError') {
+        return res.status(400).json({ success: false, message: 'Invalid approval id' });
+      }
       return res.status(500).json({
         success: false,
         message: 'Error fetching approval.',

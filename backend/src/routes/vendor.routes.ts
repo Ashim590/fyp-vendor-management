@@ -11,6 +11,8 @@ import {
   parseListLimit,
   trimExtraDoc,
 } from "../utils/cursorPagination";
+import { bustVendorMarketplaceGateCache } from "../utils/vendorGate";
+import { bustVendorDashboardSummaryCache } from "../utils/vendorDashboardSummaryCache";
 
 const router = Router();
 
@@ -65,10 +67,14 @@ router.post(
         email,
         phoneNumber,
         address,
+        province,
+        district,
         description,
         website,
         category,
+        panNumber,
         taxId,
+        registrationNumber,
         businessLicense,
         contactPerson,
       } = req.body;
@@ -93,11 +99,16 @@ router.post(
         email: emailNorm,
         phoneNumber,
         address: address || undefined,
+        province: province || undefined,
+        district: district || undefined,
         description: description || undefined,
         website: website || undefined,
         category: category || undefined,
+        panNumber: panNumber || taxId || undefined,
         taxId: taxId || undefined,
-        businessLicense: businessLicense || undefined,
+        businessLicense:
+          registrationNumber || businessLicense || undefined,
+        registrationNumber: registrationNumber || undefined,
         contactPerson: parseContactPerson(contactPerson),
         registeredBy: req.user!._id,
         status: "pending",
@@ -245,12 +256,17 @@ router.put(
         email,
         phoneNumber,
         address,
+        province,
+        district,
         description,
         website,
         category,
+        panNumber,
         taxId,
+        registrationNumber,
         businessLicense,
         contactPerson,
+        settlementEsewaId,
       } = req.body;
 
       const payload: any = {
@@ -258,13 +274,24 @@ router.put(
         email,
         phoneNumber,
         address: address || undefined,
+        province: province || undefined,
+        district: district || undefined,
         description: description || undefined,
         website: website || undefined,
         category: category || undefined,
-        taxId: taxId || undefined,
-        businessLicense: businessLicense || undefined,
+        panNumber: panNumber || taxId || undefined,
+        taxId: taxId || panNumber || undefined,
+        businessLicense:
+          registrationNumber || businessLicense || undefined,
+        registrationNumber: registrationNumber || undefined,
         contactPerson: parseContactPerson(contactPerson),
       };
+      if (typeof settlementEsewaId === "string") {
+        payload.bankDetails = {
+          ...(payload.bankDetails || {}),
+          esewaId: settlementEsewaId.trim() || undefined,
+        };
+      }
       if (req.file) payload.logo = fileToDataUrl(req.file);
 
       const updated = await Vendor.findByIdAndUpdate(vendorId, payload, {
@@ -367,12 +394,17 @@ router.put(
         email,
         phoneNumber,
         address,
+        province,
+        district,
         description,
         website,
         category,
+        panNumber,
         taxId,
+        registrationNumber,
         businessLicense,
         contactPerson,
+        settlementEsewaId,
       } = req.body;
 
       const payload: any = {
@@ -380,14 +412,25 @@ router.put(
         email: email || vendor.email,
         phoneNumber: phoneNumber || vendor.phoneNumber,
         address: address || vendor.address,
+        province: province || vendor.province,
+        district: district || vendor.district,
         description: description || vendor.description,
         website: website || vendor.website,
         category: category || vendor.category,
-        taxId: taxId || vendor.taxId,
-        businessLicense: businessLicense || vendor.businessLicense,
+        panNumber: panNumber || taxId || vendor.panNumber,
+        taxId: taxId || panNumber || vendor.taxId,
+        businessLicense:
+          registrationNumber || businessLicense || vendor.businessLicense,
+        registrationNumber: registrationNumber || vendor.registrationNumber,
         contactPerson:
           parseContactPerson(contactPerson) || vendor.contactPerson,
       };
+      if (typeof settlementEsewaId === "string") {
+        payload.bankDetails = {
+          ...(vendor.bankDetails || {}),
+          esewaId: settlementEsewaId.trim() || undefined,
+        };
+      }
       if (req.file) payload.logo = fileToDataUrl(req.file);
 
       const updated = await Vendor.findByIdAndUpdate(vendor._id, payload, {
@@ -440,6 +483,9 @@ router.put(
         excludeUserId: req.user?._id ?? null,
       });
 
+      bustVendorMarketplaceGateCache(String(vendor._id));
+      bustVendorDashboardSummaryCache(String(vendor._id));
+
       return res.json({ vendor, success: true });
     } catch (err) {
       console.error(err);
@@ -487,6 +533,9 @@ router.put(
         type: "vendor_rejected_staff",
         excludeUserId: req.user?._id ?? null,
       });
+
+      bustVendorMarketplaceGateCache(String(vendor._id));
+      bustVendorDashboardSummaryCache(String(vendor._id));
 
       return res.json({ vendor, success: true });
     } catch (err) {

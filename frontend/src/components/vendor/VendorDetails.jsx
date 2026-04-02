@@ -25,6 +25,8 @@ import {
 const VendorDetails = () => {
   const { id } = useParams();
   const dispatch = useDispatch();
+  const { user } = useSelector((store) => store.auth);
+  const canApprove = user?.role === "admin";
   const { currentVendor: vendor, loading, error } = useSelector(
     (store) => store.vendor
   );
@@ -145,7 +147,7 @@ const VendorDetails = () => {
                 </div>
               </div>
             </div>
-            {vendor.status === "pending" && (
+            {canApprove && vendor.status === "pending" && (
               <div className="flex gap-2">
                 <Button
                   onClick={handleApprove}
@@ -216,16 +218,17 @@ const VendorDetails = () => {
                       <MapPin className="h-4 w-4" />
                       {vendor.address || "Not provided"}
                     </p>
+                    <p className="mt-1 text-sm text-gray-600">
+                      {vendor.province || "—"} / {vendor.district || "—"}
+                    </p>
                   </div>
                   <div>
-                    <label className="text-sm text-gray-500">Tax ID</label>
-                    <p>{vendor.taxId || "Not provided"}</p>
+                    <label className="text-sm text-gray-500">PAN Number</label>
+                    <p>{vendor.panNumber || vendor.taxId || "Not provided"}</p>
                   </div>
                   <div>
-                    <label className="text-sm text-gray-500">
-                      Business License
-                    </label>
-                    <p>{vendor.businessLicense || "Not provided"}</p>
+                    <label className="text-sm text-gray-500">Registration Number</label>
+                    <p>{vendor.registrationNumber || vendor.businessLicense || "Not provided"}</p>
                   </div>
                   <div>
                     <label className="text-sm text-gray-500">
@@ -284,6 +287,10 @@ const VendorDetails = () => {
               <CardContent className="space-y-4">
                 {vendor.bankDetails ? (
                   <>
+                    <div>
+                      <label className="text-sm text-gray-500">eSewa ID</label>
+                      <p>{vendor.bankDetails.esewaId || "Not provided"}</p>
+                    </div>
                     <div>
                       <label className="text-sm text-gray-500">Bank Name</label>
                       <p>{vendor.bankDetails.bankName}</p>

@@ -1,13 +1,15 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import Tender from '../models/Tender';
 import Vendor from '../models/Vendor';
 import User from '../models/User';
 import Notification from '../models/Notification';
 import Bid from '../models/Bid';
 import Payment from '../models/Payment';
+import TenderClarification from '../models/TenderClarification';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
 import { createAudit } from '../utils/auditLog';
-import { isVendorApprovedForMarketplace } from '../utils/vendorGate';
+import { vendorMayAccessMarketplace } from '../utils/vendorGate';
 import {
   mergeWithCursorFilter,
   parseListLimit,
@@ -15,12 +17,47 @@ import {
 } from '../utils/cursorPagination';
 import { invalidateStaffSummaryCache } from '../utils/staffDashboardCache';
 import { invalidateAdminDashboardCache } from '../utils/adminDashboardCache';
+import { ensurePaymentForAwardedBid } from '../utils/tenderAwardPayment';
 const router = Router();
+
+function refId(ref: unknown): string {
+  if (ref && typeof ref === 'object' && '_id' in (ref as Record<string, unknown>)) {
+    return String((ref as { _id: unknown })._id);
+  }
+  return String(ref || '');
+}
 
 const generateRef = () =>
   'TDR-' +
   Date.now().toString(36).toUpperCase() +
   Math.random().toString(36).slice(2, 6).toUpperCase();
+
+function parseRequiredDocuments(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw
+      .map((x) => String(x || '').trim())
+      .filter(Boolean);
+  }
+  if (typeof raw === 'string') {
+    const t = raw.trim();
+    if (!t) return [];
+    if (t.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(t);
+        if (Array.isArray(parsed)) {
+          return parsed.map((x) => String(x || '').trim()).filter(Boolean);
+        }
+      } catch {
+        // fallback below
+      }
+    }
+    return t
+      .split(/\r?\n|,/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
 
 router.post(
   '/',
@@ -37,6 +74,7 @@ router.post(
         budget,
         budgetRange,
         requirements,
+        requiredDocuments,
         status
       } = req.body;
 
@@ -66,6 +104,7 @@ router.post(
               ? { min: 0, max: Number(budget) }
               : undefined,
         requirements: requirements || '',
+        requiredDocuments: parseRequiredDocuments(requiredDocuments),
         status: status || 'DRAFT'
       });
 
@@ -94,11 +133,8 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
 
     // Vendors can only access verified vendor accounts + published tenders.
     if (req.user?.role === 'VENDOR') {
-      const vendorDoc = req.user.vendorProfile
-        ? await Vendor.findById(req.user.vendorProfile)
-        : null;
-
-      if (!isVendorApprovedForMarketplace(vendorDoc)) {
+      const mayBid = await vendorMayAccessMarketplace(req.user.vendorProfile);
+      if (!mayBid) {
         return res.json({
           tenders: [],
           success: true,
@@ -156,11 +192,11 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
-/** Procurement officer: withdraw published tender (→ CLOSED) or remove a draft (delete). */
+/** Procurement officer or admin: withdraw published tender (→ CLOSED) or remove a draft (delete). */
 router.patch(
   '/:id/withdraw',
   authenticate,
-  authorize(['PROCUREMENT_OFFICER']),
+  authorize(['PROCUREMENT_OFFICER', 'ADMIN']),
   async (req: AuthRequest, res) => {
     try {
       const tender = await Tender.findById(req.params.id);
@@ -232,11 +268,11 @@ router.patch(
   }
 );
 
-/** Admin only: permanently delete tender and related bids / non-completed payments. */
+/** Admin + procurement officer: permanently delete tender and related bids / non-completed payments. */
 router.delete(
   '/:id',
   authenticate,
-  authorize(['ADMIN']),
+  authorize(['ADMIN', 'PROCUREMENT_OFFICER']),
   async (req: AuthRequest, res) => {
     try {
       const tender = await Tender.findById(req.params.id);
@@ -258,7 +294,11 @@ router.delete(
 
       await Payment.deleteMany({ tender: tender._id });
       await Bid.deleteMany({ tender: tender._id });
+      await TenderClarification.deleteMany({ tender: tender._id });
       await Tender.deleteOne({ _id: tender._id });
+
+      const deletedBy =
+        req.user?.role === 'ADMIN' ? 'administrator' : 'procurement officer';
 
       await createAudit({
         req,
@@ -266,7 +306,7 @@ router.delete(
         entityType: 'tender',
         entityId: tender._id,
         entityName: tender.title,
-        description: 'Tender deleted by administrator',
+        description: `Tender deleted by ${deletedBy}`,
         module: 'tenders',
         subModule: 'delete',
         status: 'success',
@@ -292,14 +332,20 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
 
     // Vendor visibility enforcement.
     if (req.user?.role === 'VENDOR') {
-      if (tender.status !== 'PUBLISHED') {
+      const mayBid = await vendorMayAccessMarketplace(req.user.vendorProfile);
+      if (!mayBid) {
         return res.status(404).json({ message: 'Tender not found', success: false });
       }
 
-      const vendorDoc = req.user.vendorProfile
-        ? await Vendor.findById(req.user.vendorProfile)
-        : null;
-      if (!isVendorApprovedForMarketplace(vendorDoc)) {
+      const vendorProfileId = refId(req.user.vendorProfile);
+      const awardedVendorId = refId(tender.awardedVendor);
+      const isOwnAwardedTender =
+        tender.status === 'AWARDED' &&
+        vendorProfileId &&
+        awardedVendorId &&
+        vendorProfileId === awardedVendorId;
+
+      if (tender.status !== 'PUBLISHED' && !isOwnAwardedTender) {
         return res.status(404).json({ message: 'Tender not found', success: false });
       }
     }
@@ -309,6 +355,131 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
     return res.status(500).json({ message: 'Failed to load tender', success: false });
   }
 });
+
+router.get('/:id/clarifications', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const tender = await Tender.findById(req.params.id).select('_id status awardedVendor');
+    if (!tender) {
+      return res.status(404).json({ message: 'Tender not found', success: false });
+    }
+
+    const role = req.user?.role;
+    const uid = req.user?._id;
+    const vendorProfileId = refId(req.user?.vendorProfile);
+    const awardedVendorId = refId(tender.awardedVendor);
+    const isOwnAwardedTender =
+      role === 'VENDOR' &&
+      tender.status === 'AWARDED' &&
+      vendorProfileId &&
+      awardedVendorId &&
+      vendorProfileId === awardedVendorId;
+
+    if (role === 'VENDOR') {
+      const mayBid = await vendorMayAccessMarketplace(req.user?.vendorProfile);
+      if (!mayBid && !isOwnAwardedTender) {
+        return res.status(404).json({ message: 'Tender not found', success: false });
+      }
+      if (tender.status !== 'PUBLISHED' && !isOwnAwardedTender) {
+        return res.status(404).json({ message: 'Tender not found', success: false });
+      }
+    }
+
+    const filter: Record<string, unknown> = { tender: tender._id };
+    if (role === 'VENDOR') {
+      filter.$or = [{ isPublic: true }, { vendorUser: uid }];
+    }
+
+    const clarifications = await TenderClarification.find(filter)
+      .sort({ askedAt: -1, _id: -1 })
+      .populate('vendorUser', 'name')
+      .lean();
+
+    return res.json({ clarifications, success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Failed to load clarifications', success: false });
+  }
+});
+
+router.post(
+  '/:id/clarifications',
+  authenticate,
+  authorize(['VENDOR']),
+  async (req: AuthRequest, res) => {
+    try {
+      const tender = await Tender.findById(req.params.id).select('_id status');
+      if (!tender) {
+        return res.status(404).json({ message: 'Tender not found', success: false });
+      }
+      if (tender.status !== 'PUBLISHED') {
+        return res.status(400).json({
+          message: 'Clarifications can be requested only while tender is published.',
+          success: false,
+        });
+      }
+      if (!req.user?.vendorProfile) {
+        return res.status(400).json({ message: 'Vendor profile is required', success: false });
+      }
+      const mayBid = await vendorMayAccessMarketplace(req.user.vendorProfile);
+      if (!mayBid) {
+        return res.status(403).json({
+          message: 'Vendor is not approved yet.',
+          success: false,
+        });
+      }
+
+      const question = String(req.body?.question || '').trim();
+      if (!question) {
+        return res.status(400).json({ message: 'Question is required.', success: false });
+      }
+
+      const c = await TenderClarification.create({
+        tender: tender._id,
+        vendorUser: req.user._id,
+        vendor: req.user.vendorProfile,
+        question,
+        isPublic: true,
+      });
+      return res.status(201).json({ clarification: c, success: true });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ message: 'Failed to create clarification', success: false });
+    }
+  },
+);
+
+router.patch(
+  '/:id/clarifications/:clarificationId/answer',
+  authenticate,
+  authorize(['PROCUREMENT_OFFICER', 'ADMIN']),
+  async (req: AuthRequest, res) => {
+    try {
+      const answer = String(req.body?.answer || '').trim();
+      if (!answer) {
+        return res.status(400).json({ message: 'Answer is required.', success: false });
+      }
+      const c = await TenderClarification.findOneAndUpdate(
+        {
+          _id: req.params.clarificationId,
+          tender: req.params.id,
+        },
+        {
+          answer,
+          isPublic: true,
+          answeredAt: new Date(),
+        },
+        { new: true },
+      );
+      if (!c) {
+        return res.status(404).json({ message: 'Clarification not found', success: false });
+      }
+      return res.json({ clarification: c, success: true });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ message: 'Failed to answer clarification', success: false });
+    }
+  },
+);
 
 router.patch(
   '/:id/publish',
@@ -338,13 +509,13 @@ router.patch(
         details: { status: 'PUBLISHED' }
       });
 
-      // Notify all verified vendors: new tender available in Tenders section
+      // Notify approved marketplace vendors only — not staff or admins.
       try {
         const verifiedIds = await Vendor.find({ status: 'approved' }).distinct('_id');
         const vendorUsers = await User.find({
           role: 'VENDOR',
           isActive: true,
-          vendorProfile: { $in: verifiedIds }
+          vendorProfile: { $in: verifiedIds, $exists: true, $ne: null },
         }).select('_id');
 
         const tid = String(tender._id);
@@ -425,15 +596,61 @@ router.patch(
   '/:id/award',
   authenticate,
   authorize(['PROCUREMENT_OFFICER', 'ADMIN']),
-  async (req, res) => {
-    const { awardedVendor } = req.body;
-    const tender = await Tender.findByIdAndUpdate(
-      req.params.id,
-      { status: 'AWARDED', awardedVendor },
-      { new: true }
-    );
+  async (req: AuthRequest, res) => {
+    try {
+      const { awardedVendor } = req.body as { awardedVendor?: string };
+      if (!awardedVendor) {
+        return res.status(400).json({
+          message: 'awardedVendor is required',
+          success: false
+        });
+      }
 
-    if (tender) {
+      const tender = await Tender.findById(req.params.id);
+      if (!tender) {
+        return res.status(404).json({ message: 'Tender not found', success: false });
+      }
+
+      if (tender.status === 'AWARDED') {
+        return res.status(400).json({
+          message: 'This tender is already awarded',
+          success: false
+        });
+      }
+
+      if (tender.status !== 'PUBLISHED' && tender.status !== 'CLOSED') {
+        return res.status(400).json({
+          message: 'Only published or closed tenders can be awarded',
+          success: false
+        });
+      }
+
+      const vendorOid = new mongoose.Types.ObjectId(String(awardedVendor));
+      const winningBid = await Bid.findOne({
+        tender: tender._id,
+        vendor: vendorOid,
+        status: 'ACCEPTED'
+      });
+
+      if (!winningBid) {
+        return res.status(400).json({
+          message:
+            'Select a preferred quotation (Accept on the tender) for this vendor before awarding.',
+          success: false
+        });
+      }
+
+      tender.status = 'AWARDED';
+      tender.awardedVendor = vendorOid;
+      await tender.save();
+
+      await Bid.updateMany(
+        { tender: tender._id, _id: { $ne: winningBid._id } },
+        { status: 'REJECTED' }
+      );
+
+      await ensurePaymentForAwardedBid(winningBid, tender, req.user?._id);
+
       await createAudit({
         req,
         action: 'award',
@@ -444,10 +661,21 @@ router.patch(
         module: 'tenders',
         subModule: 'award',
         status: 'success',
-        details: { awardedVendor }
+        details: { awardedVendor: String(vendorOid) }
       });
+
+      invalidateStaffSummaryCache();
+      invalidateAdminDashboardCache();
+
+      const fresh = await Tender.findById(tender._id).populate(
+        'awardedVendor',
+        'name email phoneNumber'
+      );
+      return res.json({ tender: fresh, success: true });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ message: 'Failed to award tender', success: false });
     }
-    res.json(tender);
   }
 );
 

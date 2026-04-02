@@ -52,8 +52,7 @@ const Invoices = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [reconcileBusy, setReconcileBusy] = useState(false);
 
-  const isStaff = user?.role === "admin" || user?.role === "staff";
-  const isVendor = user?.role === "vendor";
+  const isStaff = user?.role === "staff";
 
   useEffect(() => {
     dispatch(getAllInvoices({ limit: 40 }));
@@ -93,20 +92,49 @@ const Invoices = () => {
     return inv.purchaseOrderNumber || "—";
   };
 
+  const downloadInvoicePdfSafe = async (invoice) => {
+    if (!invoice?._id) return;
+    try {
+      let inv = invoice;
+      if (!Array.isArray(inv.items) || inv.items.length === 0) {
+        const { data } = await axios.get(
+          `${INVOICE_API_END_POINT}/${invoice._id}`,
+          {
+            withCredentials: true,
+            headers: getAuthHeaderFromStorage(),
+          },
+        );
+        inv = data?.invoice ?? inv;
+      }
+      downloadInvoicePdf(inv);
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Could not prepare PDF (load invoice first).",
+      );
+    }
+  };
+
   const openInvoiceDetail = async (invoiceId) => {
     setDetailOpen(true);
     setDetailLoading(true);
     setDetailInvoice(null);
     try {
-      const { data } = await axios.get(`${INVOICE_API_END_POINT}/${invoiceId}`, {
-        withCredentials: true,
-        headers: getAuthHeaderFromStorage(),
-      });
+      const { data } = await axios.get(
+        `${INVOICE_API_END_POINT}/${invoiceId}`,
+        {
+          withCredentials: true,
+          headers: getAuthHeaderFromStorage(),
+        },
+      );
       if (data?.invoice) setDetailInvoice(data.invoice);
       else toast.error("Could not load invoice details.");
     } catch (err) {
       toast.error(
-        err?.response?.data?.message || err?.message || "Could not load invoice.",
+        err?.response?.data?.message ||
+          err?.message ||
+          "Could not load invoice.",
       );
       setDetailOpen(false);
     } finally {
@@ -155,11 +183,13 @@ const Invoices = () => {
         { invoiceId },
         { withCredentials: true, headers: getAuthHeaderFromStorage() },
       );
-      toast.success("eSewa payment record created. The vendor can pay from this screen.");
+      toast.success("Payment record created.");
       dispatch(getAllInvoices({ limit: 40 }));
     } catch (err) {
       toast.error(
-        err?.response?.data?.message || err?.message || "Could not create payment.",
+        err?.response?.data?.message ||
+          err?.message ||
+          "Could not create payment.",
       );
     } finally {
       setInvoicePayBusy((s) => ({ ...s, [invoiceId]: null }));
@@ -175,7 +205,9 @@ const Invoices = () => {
       );
       const invPay = wrap?.payment;
       if (!invPay?._id) {
-        toast.error("Procurement has not opened an eSewa payment for this invoice yet.");
+        toast.error(
+          "Procurement has not opened an eSewa payment for this invoice yet.",
+        );
         return;
       }
       if (invPay.status !== "PENDING") {
@@ -190,10 +222,15 @@ const Invoices = () => {
       if (!data?.success || !data.checkoutUrl || !data.payload) {
         throw new Error(data?.message || "Could not start eSewa");
       }
-      setInvoiceCheckout({ checkoutUrl: data.checkoutUrl, payload: data.payload });
+      setInvoiceCheckout({
+        checkoutUrl: data.checkoutUrl,
+        payload: data.payload,
+      });
     } catch (err) {
       toast.error(
-        err?.response?.data?.message || err?.message || "Could not start eSewa.",
+        err?.response?.data?.message ||
+          err?.message ||
+          "Could not start eSewa.",
       );
     } finally {
       setInvoicePayBusy((s) => ({ ...s, [invoiceId]: null }));
@@ -202,10 +239,7 @@ const Invoices = () => {
 
   return (
     <WorkspacePageLayout>
-      <WorkspacePageHeader
-        title="Invoice management"
-        description="Invoices from purchase orders and automatic receipts after tender eSewa payment."
-      />
+      <WorkspacePageHeader title="Invoice management" />
 
       <Dialog
         open={detailOpen}
@@ -218,7 +252,8 @@ const Invoices = () => {
           <DialogHeader>
             <DialogTitle>Invoice details</DialogTitle>
             <DialogDescription>
-              {detailInvoice?.invoiceNumber || (detailLoading ? "Loading…" : "")}
+              {detailInvoice?.invoiceNumber ||
+                (detailLoading ? "Loading…" : "")}
             </DialogDescription>
           </DialogHeader>
           {detailLoading && (
@@ -228,15 +263,21 @@ const Invoices = () => {
             <div className="space-y-4 text-sm">
               <div className="grid gap-2 sm:grid-cols-2">
                 <div>
-                  <p className="text-xs font-medium uppercase text-slate-500">Vendor</p>
+                  <p className="text-xs font-medium uppercase text-slate-500">
+                    Vendor
+                  </p>
                   <p className="text-slate-900">{detailInvoice.vendorName}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-medium uppercase text-slate-500">Status</p>
+                  <p className="text-xs font-medium uppercase text-slate-500">
+                    Status
+                  </p>
                   <p className="text-slate-900">{detailInvoice.status}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-medium uppercase text-slate-500">Reference</p>
+                  <p className="text-xs font-medium uppercase text-slate-500">
+                    Reference
+                  </p>
                   <p className="text-slate-900">
                     {detailInvoice.purchaseOrder?.orderNumber ||
                       detailInvoice.tender?.referenceNumber ||
@@ -246,25 +287,34 @@ const Invoices = () => {
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs font-medium uppercase text-slate-500">Total</p>
-                  <p className="text-slate-900">{formatCurrency(detailInvoice.totalAmount)}</p>
+                  <p className="text-xs font-medium uppercase text-slate-500">
+                    Total
+                  </p>
+                  <p className="text-slate-900">
+                    {formatCurrency(detailInvoice.totalAmount)}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-xs font-medium uppercase text-slate-500">Issue date</p>
-                  <p className="text-slate-900">{formatDate(detailInvoice.issueDate)}</p>
+                  <p className="text-xs font-medium uppercase text-slate-500">
+                    Issue date
+                  </p>
+                  <p className="text-slate-900">
+                    {formatDate(detailInvoice.issueDate)}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-xs font-medium uppercase text-slate-500">Due date</p>
-                  <p className="text-slate-900">{formatDate(detailInvoice.dueDate)}</p>
+                  <p className="text-xs font-medium uppercase text-slate-500">
+                    Due date
+                  </p>
+                  <p className="text-slate-900">
+                    {formatDate(detailInvoice.dueDate)}
+                  </p>
                 </div>
               </div>
-              {!!(detailInvoice.tenderPayment || detailInvoice.tender) && (
-                <p className="rounded-md bg-sky-50 px-3 py-2 text-sky-900">
-                  This invoice was generated after a completed tender (award) eSewa payment.
-                </p>
-              )}
               <div>
-                <p className="mb-2 text-xs font-medium uppercase text-slate-500">Line items</p>
+                <p className="mb-2 text-xs font-medium uppercase text-slate-500">
+                  Line items
+                </p>
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
@@ -280,10 +330,14 @@ const Invoices = () => {
                         <TableCell>
                           <span className="font-medium">{it.itemName}</span>
                           {it.description ? (
-                            <span className="mt-1 block text-xs text-slate-600">{it.description}</span>
+                            <span className="mt-1 block text-xs text-slate-600">
+                              {it.description}
+                            </span>
                           ) : null}
                         </TableCell>
-                        <TableCell className="text-right">{it.quantity}</TableCell>
+                        <TableCell className="text-right">
+                          {it.quantity}
+                        </TableCell>
                         <TableCell className="text-right">
                           {formatCurrency(it.unitPrice)}
                         </TableCell>
@@ -347,12 +401,14 @@ const Invoices = () => {
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
+            <TableHead className="w-10 text-center">S/N</TableHead>
             <TableHead>Invoice #</TableHead>
             <TableHead>Vendor</TableHead>
             <TableHead>PO / tender</TableHead>
             <TableHead>Items</TableHead>
             <TableHead>Amount</TableHead>
             <TableHead>Issue Date</TableHead>
+            <TableHead>Created</TableHead>
             <TableHead>Due Date</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Actions</TableHead>
@@ -370,13 +426,7 @@ const Invoices = () => {
               <TableCell colSpan={9} className="bg-slate-50/80 px-6 py-10">
                 <div className="mx-auto max-w-2xl space-y-3 text-center text-sm text-slate-600">
                   <p className="text-base font-medium text-slate-900">
-                    No invoices match your filters (or none exist yet)
-                  </p>
-                  <p className="text-left leading-relaxed">
-                    Rows are stored when the server <strong>verifies</strong> a payment: tender fee
-                    callbacks create a paid invoice; PO invoices are created by staff first, then marked
-                    paid after eSewa. Opening the payment link in the browser (GET) does not create an
-                    invoice—only a completed callback with status <code className="rounded bg-slate-200 px-1 text-xs">COMPLETE</code> does.
+                    No invoices match your filters.
                   </p>
                   {isStaff && (
                     <div className="flex flex-col items-center gap-2 pt-2 sm:flex-row sm:justify-center">
@@ -400,8 +450,13 @@ const Invoices = () => {
                             toast.success(
                               `Backfill done: ${t} tender invoice(s) created, ${s} supplier payment(s) applied.`,
                             );
-                            if (Array.isArray(data?.errors) && data.errors.length > 0) {
-                              toast.warning(`${data.errors.length} row(s) reported errors — check server logs.`);
+                            if (
+                              Array.isArray(data?.errors) &&
+                              data.errors.length > 0
+                            ) {
+                              toast.warning(
+                                `${data.errors.length} row(s) reported errors — check server logs.`,
+                              );
                             }
                             dispatch(getAllInvoices({ limit: 40 }));
                           } catch (e) {
@@ -415,7 +470,9 @@ const Invoices = () => {
                           }
                         }}
                       >
-                        {reconcileBusy ? "Running…" : "Backfill invoices from completed payments"}
+                        {reconcileBusy
+                          ? "Running…"
+                          : "Backfill invoices from completed payments"}
                       </Button>
                     </div>
                   )}
@@ -423,8 +480,11 @@ const Invoices = () => {
               </TableCell>
             </TableRow>
           ) : (
-            filteredInvoices.map((invoice) => (
+            filteredInvoices.map((invoice, index) => (
               <TableRow key={invoice._id}>
+                <TableCell className="w-10 text-center text-xs text-slate-500">
+                  {index + 1}
+                </TableCell>
                 <TableCell className="font-medium">
                   {invoice.invoiceNumber}
                 </TableCell>
@@ -442,7 +502,7 @@ const Invoices = () => {
                 <TableCell>
                   <div className="flex items-center gap-1">
                     <FileText className="h-4 w-4 text-gray-400" />
-                    {invoice.items?.length || 0} items
+                    {invoice.itemsCount ?? invoice.items?.length ?? 0} items
                   </div>
                 </TableCell>
                 <TableCell className="font-medium">
@@ -450,6 +510,7 @@ const Invoices = () => {
                 </TableCell>
                 <TableCell>{formatDate(invoice.issueDate)}</TableCell>
                 <TableCell>{formatDate(invoice.dueDate)}</TableCell>
+                <TableCell>{formatDate(invoice.createdAt)}</TableCell>
                 <TableCell>{getStatusBadge(invoice.status)}</TableCell>
                 <TableCell>
                   <div className="flex flex-wrap gap-2">
@@ -467,35 +528,36 @@ const Invoices = () => {
                       size="sm"
                       type="button"
                       title="Download invoice PDF"
-                      onClick={() => downloadInvoicePdf(invoice)}
+                      onClick={() => downloadInvoicePdfSafe(invoice)}
                     >
                       <Receipt className="h-4 w-4" />
                     </Button>
                     {isStaff && invoice.status === "approved" && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        type="button"
-                        disabled={!!invoicePayBusy[invoice._id]}
-                        onClick={() => createInvoicePayment(invoice._id)}
-                      >
-                        {invoicePayBusy[invoice._id] === "create"
-                          ? "…"
-                          : "eSewa payment"}
-                      </Button>
-                    )}
-                    {isVendor && invoice.status === "approved" && (
-                      <Button
-                        size="sm"
-                        type="button"
-                        className="bg-teal-600 hover:bg-teal-700"
-                        disabled={!!invoicePayBusy[invoice._id]}
-                        onClick={() => payInvoiceWithEsewa(invoice._id)}
-                      >
-                        {invoicePayBusy[invoice._id] === "pay"
-                          ? "…"
-                          : "Pay with eSewa"}
-                      </Button>
+                      <>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          type="button"
+                          disabled={!!invoicePayBusy[invoice._id]}
+                          onClick={() => createInvoicePayment(invoice._id)}
+                        >
+                          {invoicePayBusy[invoice._id] === "create"
+                            ? "…"
+                            : "Create eSewa payment"}
+                        </Button>
+                        <Button
+                          variant="default"
+                          size="sm"
+                          type="button"
+                          className="bg-teal-600 hover:bg-teal-700"
+                          disabled={!!invoicePayBusy[invoice._id]}
+                          onClick={() => payInvoiceWithEsewa(invoice._id)}
+                        >
+                          {invoicePayBusy[invoice._id] === "pay"
+                            ? "…"
+                            : "Open eSewa checkout"}
+                        </Button>
+                      </>
                     )}
                   </div>
                 </TableCell>

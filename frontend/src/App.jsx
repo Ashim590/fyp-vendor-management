@@ -7,8 +7,6 @@ import { useSelector } from "react-redux";
 import AppShell from "./components/layout/AppShell";
 import Login from "./components/auth/Login";
 import Signup from "./components/auth/Signup";
-import Unauthorized from "./components/auth/Unauthorized";
-
 // Role-based Dashboard imports
 import DashboardSelector from "./components/dashboard/Dashboards";
 import AdminDashboard from "./components/admin/AdminDashboard";
@@ -38,50 +36,6 @@ import NotificationsPage from "./components/notifications/NotificationsPage";
 import VendorPayments from "./components/payment/VendorPayments";
 import InvoiceEsewaReturn from "./components/payment/InvoiceEsewaReturn";
 import ProcurementPayments from "./components/procurement/ProcurementPayments";
-
-// ============================================
-// Role-Based Route Configuration
-// ============================================
-// This configuration defines which roles can access which routes
-// Each route can have: allowedRoles, or if not specified, all authenticated users can access
-
-const ROUTE_ROLES = {
-  // Public routes (no authentication required)
-  "/login": { allowedRoles: null },
-  "/signup": { allowedRoles: null },
-
-  // Protected routes with role restrictions
-  "/profile": { allowedRoles: ["admin", "staff", "vendor"] },
-  "/notifications": { allowedRoles: ["admin", "staff", "vendor"] },
-
-  // Admin only routes
-  "/admin": { allowedRoles: ["admin"] },
-  "/admin/users": { allowedRoles: ["admin"] },
-  "/admin/users/:id": { allowedRoles: ["admin"] },
-
-  // Vendor management - Admin only
-  "/vendors": { allowedRoles: ["admin", "staff"] },
-  "/vendors/:id": { allowedRoles: ["admin", "staff"] },
-  // Purchase Orders - All roles can view, but different actions
-  "/purchase-orders": { allowedRoles: ["admin", "staff", "vendor"] },
-
-  // Deliveries - All roles
-  "/deliveries": { allowedRoles: ["admin", "staff", "vendor"] },
-
-  // Invoices - All roles
-  "/invoices": { allowedRoles: ["admin", "staff", "vendor"] },
-  "/my-payments": { allowedRoles: ["vendor"] },
-  "/payments/esewa/success": { allowedRoles: ["admin", "staff", "vendor"] },
-  "/payments/esewa/failure": { allowedRoles: ["admin", "staff", "vendor"] },
-  "/procurement/payments": { allowedRoles: ["admin", "staff"] },
-
-  // Tenders - Officer/Admin create & manage; Vendor view & bid
-  "/tenders": { allowedRoles: ["admin", "staff", "vendor"] },
-  "/tenders/create": { allowedRoles: ["admin", "staff"] },
-  "/tenders/:id": { allowedRoles: ["admin", "staff", "vendor"] },
-  "/bids-monitor": { allowedRoles: ["admin", "staff"] },
-  "/my-bids": { allowedRoles: ["vendor"] },
-};
 
 // ============================================
 // Role-Based Home Page Redirect
@@ -136,7 +90,7 @@ const appRouter = createBrowserRouter([
       { index: true, element: <HomePage /> },
       { path: "login", element: <Login /> },
       { path: "signup", element: <Signup /> },
-      { path: "unauthorized", element: <Unauthorized /> },
+      { path: "unauthorized", element: <Navigate to="/" replace /> },
       {
         path: "admin",
         element: (

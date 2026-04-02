@@ -57,7 +57,7 @@ export const getAllApprovals = createAsyncThunk(
   "approval/getAll",
   async (filters = {}, { rejectWithValue }) => {
     try {
-      const response = await axios.get(`${APPROVAL_API_END_POINT}`, {
+      const response = await axios.get(`${APPROVAL_API_END_POINT}/list`, {
         ...approvalAxiosConfig(),
         params: filters,
       });
@@ -158,7 +158,7 @@ const approvalSlice = createSlice({
       .addCase(getMyPendingApprovals.fulfilled, (state, action) => {
         state.loading = false;
         state.error = null;
-        state.pendingApprovals = action.payload.approvals;
+        state.pendingApprovals = action.payload.approvals ?? [];
       })
       .addCase(getMyPendingApprovals.rejected, (state, action) => {
         state.loading = false;
@@ -171,7 +171,7 @@ const approvalSlice = createSlice({
       .addCase(getAllApprovals.fulfilled, (state, action) => {
         state.loading = false;
         state.error = null;
-        state.approvals = action.payload.approvals;
+        state.approvals = action.payload.approvals ?? [];
       })
       .addCase(getAllApprovals.rejected, (state, action) => {
         state.loading = false;

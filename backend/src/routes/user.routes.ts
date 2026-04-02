@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import multer from 'multer';
 import User from '../models/User';
 import Vendor from '../models/Vendor';
 import { authenticate, authorize } from '../middleware/auth';
@@ -13,6 +14,15 @@ import { invalidateAdminDashboardCache } from '../utils/adminDashboardCache';
 import { safeClientProfilePhoto } from '../utils/safeClientProfilePhoto';
 
 const router = Router();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+});
+
+function fileToDataUrl(file: Express.Multer.File): string {
+  const b64 = file.buffer.toString('base64');
+  return `data:${file.mimetype};base64,${b64}`;
+}
 
 router.get('/me', authenticate, async (req: any, res) => {
   const user = await User.findById(req.user?._id).select(
@@ -23,7 +33,7 @@ router.get('/me', authenticate, async (req: any, res) => {
   let vendorProfile = null;
   if (user.vendorProfile) {
     vendorProfile = await Vendor.findById(user.vendorProfile).select(
-      '_id name email phoneNumber address description website category status'
+      '_id name email phoneNumber address province district description website category status panNumber taxId registrationNumber businessLicense contactPerson bankDetails'
     );
   }
 
@@ -44,7 +54,7 @@ router.get('/me', authenticate, async (req: any, res) => {
   });
 });
 
-router.patch('/me', authenticate, async (req: any, res) => {
+router.patch('/me', authenticate, upload.single('profilePhoto'), async (req: any, res) => {
   const { name, email, phoneNumber, profilePhoto } = req.body || {};
   const user = await User.findById(req.user?._id);
   if (!user) return res.status(404).json({ message: 'User not found' });
@@ -59,7 +69,12 @@ router.patch('/me', authenticate, async (req: any, res) => {
   }
   if (typeof name === 'string' && name.trim()) user.name = name.trim();
   if (typeof phoneNumber === 'string') (user as any).phoneNumber = phoneNumber.trim();
-  if (typeof profilePhoto === 'string') (user as any).profilePhoto = profilePhoto.trim();
+  const photoFile = req.file as Express.Multer.File | undefined;
+  if (photoFile) {
+    (user as any).profilePhoto = fileToDataUrl(photoFile);
+  } else if (typeof profilePhoto === 'string') {
+    (user as any).profilePhoto = profilePhoto.trim();
+  }
 
   await user.save();
   const saved = await User.findById(user._id).select(
@@ -68,7 +83,7 @@ router.patch('/me', authenticate, async (req: any, res) => {
   let vendorProfile = null;
   if (saved?.vendorProfile) {
     vendorProfile = await Vendor.findById(saved.vendorProfile).select(
-      '_id name email phoneNumber address description website category status'
+      '_id name email phoneNumber address province district description website category status panNumber taxId registrationNumber businessLicense contactPerson bankDetails'
     );
   }
   res.json({

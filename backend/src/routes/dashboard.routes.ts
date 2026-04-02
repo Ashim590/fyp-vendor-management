@@ -3,10 +3,13 @@ import Tender from '../models/Tender';
 import Bid from '../models/Bid';
 import Payment from '../models/Payment';
 import Quotation from '../models/Quotation';
-import Vendor from '../models/Vendor';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { isVendorApprovedForMarketplace } from '../utils/vendorGate';
+import { vendorMayAccessMarketplace } from '../utils/vendorGate';
 import { resolveStaffDashboardForApi } from '../utils/staffDashboardData';
+import {
+  getVendorDashboardSummaryCached,
+  setVendorDashboardSummaryCached,
+} from '../utils/vendorDashboardSummaryCache';
 import { perfLabel } from '../utils/perfTiming';
 
 const router = Router();
@@ -50,23 +53,36 @@ router.get('/summary', authenticate, async (req: AuthRequest, res) => {
         return res.json(empty);
       }
 
-      const vendorDoc = await Vendor.findById(vendorProfile).lean();
-      if (!vendorDoc || !isVendorApprovedForMarketplace(vendorDoc)) {
+      const mayBid = await vendorMayAccessMarketplace(vendorProfile);
+      if (!mayBid) {
         return res.json(empty);
       }
 
-      const vid = vendorProfile;
+      const vid = String(vendorProfile);
+      const bypassCache =
+        req.query.refresh === '1' ||
+        req.query.refresh === 'true' ||
+        req.query.nocache === '1';
+      if (!bypassCache) {
+        const cached = getVendorDashboardSummaryCached(vid);
+        if (cached) {
+          res.setHeader('X-Dashboard-Cache', 'hit');
+          return res.json(cached);
+        }
+      }
+
+      const vidRef = vendorProfile;
 
       const [openTenders, myBidsCount, myQuotationsCount, revRow, recentBids] =
         await Promise.all([
           Tender.countDocuments({ status: 'PUBLISHED' }),
-          Bid.countDocuments({ vendor: vid }),
-          Quotation.countDocuments({ vendor: vid }),
+          Bid.countDocuments({ vendor: vidRef }),
+          Quotation.countDocuments({ vendor: vidRef }),
           Payment.aggregate([
-            { $match: { vendor: vid, status: 'Completed' } },
+            { $match: { vendor: vidRef, status: 'Completed' } },
             { $group: { _id: null, sum: { $sum: '$amount' } } },
           ]),
-          Bid.find({ vendor: vid })
+          Bid.find({ vendor: vidRef })
             .sort({ createdAt: -1 })
             .limit(4)
             .select('amount status createdAt tender')
@@ -76,7 +92,7 @@ router.get('/summary', authenticate, async (req: AuthRequest, res) => {
 
       const totalRevenue = revRow?.[0]?.sum ? Number(revRow[0].sum) : 0;
 
-      return res.json({
+      const body = {
         success: true,
         kind: 'vendor',
         openTenders,
@@ -84,7 +100,10 @@ router.get('/summary', authenticate, async (req: AuthRequest, res) => {
         myQuotationsCount,
         totalRevenue,
         recentBids,
-      });
+      };
+      setVendorDashboardSummaryCached(vid, body);
+      res.setHeader('X-Dashboard-Cache', 'miss');
+      return res.json(body);
     }
 
     return res.status(403).json({ success: false, message: 'Not allowed' });

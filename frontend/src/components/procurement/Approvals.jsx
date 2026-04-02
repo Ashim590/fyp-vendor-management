@@ -78,22 +78,29 @@ const Approvals = () => {
         ).unwrap();
         toast.success("Approval rejected");
         if (showPending) {
-        dispatch(getMyPendingApprovals({ limit: 50 }));
-      } else {
-        dispatch(getAllApprovals({ limit: 50 }));
-      }
-    } catch (err) {
-      toast.error(err || "Failed to reject");
+          dispatch(getMyPendingApprovals({ limit: 50 }));
+        } else {
+          dispatch(getAllApprovals({ limit: 50 }));
+        }
+      } catch (err) {
+        toast.error(err || "Failed to reject");
       }
     }
   };
 
   const handleViewApproval = (approval) => {
     if (approval?.entityType === "purchase_request" && approval?.purchaseRequest) {
-      navigate(`/procurement/requests/${approval.purchaseRequest}`);
-      return;
+      const raw = approval.purchaseRequest;
+      const prId =
+        raw && typeof raw === "object" && raw !== null && "_id" in raw
+          ? raw._id
+          : raw;
+      if (prId) {
+        navigate(`/procurement/requests/${prId}`);
+        return;
+      }
     }
-    toast.info("Detailed view route is not configured for this approval type yet.");
+    toast.info("No detail view for this item.");
   };
 
   const displayApprovals = showPending ? pendingApprovals : approvals;
@@ -156,7 +163,6 @@ const Approvals = () => {
     <WorkspacePageLayout>
       <WorkspacePageHeader
         title="Approval Management"
-        description="Review purchase requests and other items awaiting sign-off. Admins and procurement staff can approve or reject pending items."
         actions={
           <WorkspaceSegmentedControl
             value={showPending ? "mine" : "all"}
@@ -199,6 +205,7 @@ const Approvals = () => {
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
+            <TableHead className="w-10 text-center">S/N</TableHead>
             <TableHead>Title</TableHead>
             <TableHead>Type</TableHead>
             <TableHead>Requester</TableHead>
@@ -213,19 +220,24 @@ const Approvals = () => {
         <TableBody>
           {loading ? (
             <TableRow>
-              <TableCell colSpan={9} className="py-12 text-center text-slate-500">
+              <TableCell colSpan={10} className="py-12 text-center text-slate-500">
                 Loading…
               </TableCell>
             </TableRow>
           ) : filteredApprovals.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={9} className="py-12 text-center text-slate-500">
-                No approvals match your filters.
+              <TableCell colSpan={10} className="py-12 text-center text-slate-500">
+                {showPending
+                  ? "Nothing assigned to you as current approver."
+                  : "No approvals match your filters."}
               </TableCell>
             </TableRow>
           ) : (
-            filteredApprovals.map((approval) => (
+            filteredApprovals.map((approval, index) => (
               <TableRow key={approval._id}>
+                <TableCell className="w-10 text-center text-xs text-slate-500">
+                  {index + 1}
+                </TableCell>
                 <TableCell className="max-w-[200px] font-medium text-slate-900">
                   <span className="line-clamp-2">{approval.title}</span>
                 </TableCell>

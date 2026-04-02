@@ -21,10 +21,11 @@ export function EsewaPaymentForm({ checkoutUrl, payload, onCancel }) {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-2xl border border-sky-100 bg-white p-6 shadow-xl">
-        <h2 className="text-lg font-semibold text-slate-900">Redirecting to eSewa…</h2>
+        <h2 className="text-lg font-semibold text-slate-900">
+          Redirecting to eSewa…
+        </h2>
         <p className="mt-2 text-sm text-slate-600">
-          You will be sent to eSewa&apos;s secure page (POST). If you opened the gateway URL
-          directly in the browser, it can show 404 — always pay from this app.
+          Please continue on the payment page.
         </p>
         {onCancel && (
           <button
@@ -35,7 +36,12 @@ export function EsewaPaymentForm({ checkoutUrl, payload, onCancel }) {
             Cancel
           </button>
         )}
-        <form ref={formRef} method="POST" action={checkoutUrl} className="sr-only">
+        <form
+          ref={formRef}
+          method="POST"
+          action={checkoutUrl}
+          className="sr-only"
+        >
           {Object.entries(payload).map(([name, value]) => (
             <input key={name} type="hidden" name={name} value={value ?? ""} />
           ))}

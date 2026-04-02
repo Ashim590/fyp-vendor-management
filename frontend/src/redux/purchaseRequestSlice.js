@@ -2,6 +2,20 @@ import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
 import { PURCHASE_REQUEST_API_END_POINT } from "@/utils/constant";
 
+function prErrorMessage(error, fallback) {
+  const data = error?.response?.data;
+  const raw = data?.message ?? data?.error;
+  if (Array.isArray(raw)) return raw.map(String).join(", ");
+  if (typeof raw === "string" && raw.trim()) return raw;
+  if (error?.message === "Network Error") {
+    return "Cannot reach the server. Check that the API is running and try again.";
+  }
+  if (typeof error?.message === "string" && error.message.includes("status code")) {
+    return error.message;
+  }
+  return fallback;
+}
+
 export const createPurchaseRequest = createAsyncThunk(
   "purchaseRequest/create",
   async (formData, { rejectWithValue }) => {
@@ -26,14 +40,14 @@ export const getAllPurchaseRequests = createAsyncThunk(
   "purchaseRequest/getAll",
   async (filters = {}, { rejectWithValue }) => {
     try {
-      const response = await axios.get(`${PURCHASE_REQUEST_API_END_POINT}`, {
+      const response = await axios.get(`${PURCHASE_REQUEST_API_END_POINT}/list`, {
         params: filters,
         withCredentials: true,
       });
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error fetching purchase requests"
+        prErrorMessage(error, "Error fetching purchase requests"),
       );
     }
   }
@@ -69,7 +83,7 @@ export const getPurchaseRequestById = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error fetching purchase request"
+        prErrorMessage(error, "Error fetching purchase request"),
       );
     }
   }
@@ -154,10 +168,34 @@ export const getPurchaseRequestStats = createAsyncThunk(
 
 export const deletePurchaseRequest = createAsyncThunk(
   "purchaseRequest/delete",
-  async (requestId, { rejectWithValue }) => {
+  async (payload, { rejectWithValue }) => {
+    const requestId =
+      typeof payload === "string" ? payload : payload?.requestId || payload?.id;
+    const force = typeof payload === "object" ? Boolean(payload?.force) : false;
     try {
       const response = await axios.delete(
         `${PURCHASE_REQUEST_API_END_POINT}/${requestId}`,
+        {
+          withCredentials: true,
+          params: force ? { force: 1 } : undefined,
+        }
+      );
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(
+        error.response?.data?.message || "Error deleting purchase request"
+      );
+    }
+  }
+);
+
+export const restorePurchaseRequest = createAsyncThunk(
+  "purchaseRequest/restore",
+  async (requestId, { rejectWithValue }) => {
+    try {
+      const response = await axios.put(
+        `${PURCHASE_REQUEST_API_END_POINT}/${requestId}/restore`,
+        {},
         {
           withCredentials: true,
         }
@@ -165,7 +203,7 @@ export const deletePurchaseRequest = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error deleting purchase request"
+        error.response?.data?.message || "Error restoring purchase request"
       );
     }
   }
@@ -243,6 +281,8 @@ const purchaseRequestSlice = createSlice({
       // Get Purchase Request By ID
       .addCase(getPurchaseRequestById.pending, (state) => {
         state.loading = true;
+        state.error = null;
+        state.currentPurchaseRequest = null;
       })
       .addCase(getPurchaseRequestById.fulfilled, (state, action) => {
         state.loading = false;
@@ -310,11 +350,26 @@ const purchaseRequestSlice = createSlice({
       .addCase(deletePurchaseRequest.fulfilled, (state, action) => {
         state.loading = false;
         state.success = true;
+        const arg = action.meta.arg;
+        const deletedId = typeof arg === "string" ? arg : arg?.requestId || arg?.id;
         state.purchaseRequests = state.purchaseRequests.filter(
-          (pr) => pr._id !== action.meta.arg
+          (pr) => pr._id !== deletedId
         );
       })
       .addCase(deletePurchaseRequest.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      // Restore Purchase Request
+      .addCase(restorePurchaseRequest.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(restorePurchaseRequest.fulfilled, (state, action) => {
+        state.loading = false;
+        state.success = true;
+      })
+      .addCase(restorePurchaseRequest.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       });

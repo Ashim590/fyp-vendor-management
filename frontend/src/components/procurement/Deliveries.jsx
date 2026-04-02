@@ -316,14 +316,7 @@ const Deliveries = () => {
 
   return (
     <WorkspacePageLayout>
-      <WorkspacePageHeader
-        title="Delivery tracking"
-        description={
-          isVendor
-            ? "Update shipment stages (shipped → in transit → delivered). Procurement confirms receipt."
-            : "Monitor order progress after payment. Vendors update shipment stages; procurement confirms receipt."
-        }
-      />
+      <WorkspacePageHeader title="Delivery tracking" />
 
       <WorkspaceToolbar>
         <div className="relative min-w-0 flex-1">

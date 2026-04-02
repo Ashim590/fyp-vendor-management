@@ -18,6 +18,7 @@ export interface ITender extends Document {
     max: number;
   };
   requirements?: string;
+  requiredDocuments?: string[];
   awardedVendor?: mongoose.Types.ObjectId;
   purchaseRequest?: mongoose.Types.ObjectId;
 }
@@ -42,6 +43,10 @@ const TenderSchema: Schema<ITender> = new Schema(
       max: { type: Number }
     },
     requirements: { type: String, trim: true, default: '' },
+    requiredDocuments: {
+      type: [{ type: String, trim: true }],
+      default: [],
+    },
     awardedVendor: { type: Schema.Types.ObjectId, ref: 'Vendor' },
     purchaseRequest: {
       type: Schema.Types.ObjectId,

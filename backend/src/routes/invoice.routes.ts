@@ -2,6 +2,7 @@ import express from 'express';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
 import Invoice from '../models/Invoice';
 import PurchaseOrder from '../models/PurchaseOrder';
+import Tender from '../models/Tender';
 import Vendor from '../models/Vendor';
 import {
   mergeWithCursorFilter,
@@ -11,6 +12,69 @@ import {
 import { reconcileInvoicesFromVerifiedPayments } from '../utils/invoiceFromTenderPayment';
 
 const router = express.Router();
+
+async function aggregateInvoiceListPage(
+  merged: Record<string, unknown>,
+  pageLimit: number,
+) {
+  const poColl = PurchaseOrder.collection.collectionName;
+  const tenderColl = Tender.collection.collectionName;
+  const raw = await Invoice.aggregate([
+    { $match: merged },
+    { $sort: { createdAt: -1, _id: -1 } },
+    { $limit: pageLimit + 1 },
+    {
+      $project: {
+        invoiceNumber: 1,
+        purchaseOrder: 1,
+        purchaseOrderNumber: 1,
+        vendor: 1,
+        vendorName: 1,
+        issueDate: 1,
+        dueDate: 1,
+        status: 1,
+        totalAmount: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        tenderPayment: 1,
+        tender: 1,
+        bid: 1,
+        paidAt: 1,
+        settledByInvoicePayment: 1,
+        itemsCount: { $size: { $ifNull: ['$items', []] } },
+      },
+    },
+    {
+      $lookup: {
+        from: poColl,
+        localField: 'purchaseOrder',
+        foreignField: '_id',
+        as: '_po',
+        pipeline: [{ $project: { orderNumber: 1 } }],
+      },
+    },
+    {
+      $lookup: {
+        from: tenderColl,
+        localField: 'tender',
+        foreignField: '_id',
+        as: '_tend',
+        pipeline: [{ $project: { title: 1, referenceNumber: 1 } }],
+      },
+    },
+    {
+      $addFields: {
+        purchaseOrder: { $arrayElemAt: ['$_po', 0] },
+        tender: { $arrayElemAt: ['$_tend', 0] },
+      },
+    },
+    { $project: { _po: 0, _tend: 0 } },
+  ]);
+  return trimExtraDoc(
+    raw as Array<{ createdAt?: Date; _id: unknown }>,
+    pageLimit,
+  );
+}
 
 router.post(
   '/create',
@@ -76,16 +140,10 @@ router.get(
       } catch {
         return res.status(400).json({ success: false, message: 'Invalid cursor' });
       }
-      const raw = await Invoice.find(merged)
-        .sort({ createdAt: -1, _id: -1 })
-        .limit(pageLimit + 1)
-        .select(
-          'invoiceNumber purchaseOrder purchaseOrderNumber vendor vendorName items issueDate dueDate status totalAmount createdAt updatedAt tenderPayment tender bid paidAt settledByInvoicePayment',
-        )
-        .populate('purchaseOrder', 'orderNumber')
-        .populate('tender', 'title referenceNumber')
-        .lean();
-      const { items, nextCursor, hasMore } = trimExtraDoc(raw, pageLimit);
+      const { items, nextCursor, hasMore } = await aggregateInvoiceListPage(
+        merged,
+        pageLimit,
+      );
       return res.json({ success: true, invoices: items, nextCursor, hasMore });
     } catch (err) {
       console.error('GET /api/v1/invoice', err);

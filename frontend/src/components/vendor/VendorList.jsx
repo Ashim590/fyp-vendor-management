@@ -23,6 +23,8 @@ import { Link } from "react-router-dom";
 const VendorList = () => {
   const dispatch = useDispatch();
   const { vendors, loading, error } = useSelector((store) => store.vendor);
+  const { user } = useSelector((store) => store.auth);
+  const canApprove = user?.role === "admin";
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
@@ -158,7 +160,7 @@ const VendorList = () => {
                             <Eye className="h-4 w-4" />
                           </Button>
                         </Link>
-                        {vendor.status === "pending" && (
+                        {canApprove && vendor.status === "pending" && (
                           <>
                             <Button
                               variant="outline"

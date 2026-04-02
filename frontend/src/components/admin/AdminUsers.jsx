@@ -174,10 +174,6 @@ const AdminUsers = () => {
         <h2 className="text-sm font-semibold text-slate-900 mb-2">
           Create Procurement Officer
         </h2>
-        <p className="text-xs text-slate-500 mb-3 max-w-md">
-          Officers can create and manage tenders, review bids, and record award
-          decisions. They do not have full admin access.
-        </p>
         <form
           onSubmit={createOfficer}
           className="grid gap-3 md:grid-cols-[minmax(0,1.2fr),minmax(0,1.4fr),minmax(0,1.1fr),auto]"

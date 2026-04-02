@@ -5,6 +5,7 @@ export type InvoicePaymentStatus = 'PENDING' | 'PAID' | 'FAILED';
 export interface IInvoicePayment extends Document {
   invoice: mongoose.Types.ObjectId;
   vendor: mongoose.Types.ObjectId;
+  vendorRegistrationNumber?: string;
   amount: number;
   status: InvoicePaymentStatus;
 
@@ -25,6 +26,7 @@ const InvoicePaymentSchema: Schema<IInvoicePayment> = new Schema(
   {
     invoice: { type: Schema.Types.ObjectId, ref: 'Invoice', required: true, index: true },
     vendor: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true, index: true },
+    vendorRegistrationNumber: { type: String, trim: true, default: '' },
     amount: { type: Number, required: true, min: 0 },
     status: { type: String, enum: ['PENDING', 'PAID', 'FAILED'], default: 'PENDING', index: true },
 

@@ -58,12 +58,6 @@ const AdminVendorsPanel = () => {
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-slate-600 leading-relaxed max-w-3xl">
-        Every new vendor registration appears here as{" "}
-        <strong>Pending</strong>. Use <strong>Approve</strong> to verify their
-        organization and allow them to log in. Until you approve, they cannot
-        access the system.
-      </p>
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-900">Vendor Approvals</h2>
         <select

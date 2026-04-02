@@ -175,7 +175,10 @@ const Quotations = () => {
                     <TableCell>
                       <div className="flex items-center gap-1">
                         <FileText className="h-4 w-4 text-gray-400" />
-                        {quotation.items?.length || 0} items
+                        {quotation.itemsCount ??
+                          quotation.items?.length ??
+                          0}{" "}
+                        items
                       </div>
                     </TableCell>
                     <TableCell className="font-medium">

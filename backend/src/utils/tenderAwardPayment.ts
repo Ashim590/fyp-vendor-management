@@ -9,8 +9,8 @@ import { invalidateStaffSummaryCache } from './staffDashboardCache';
 import { invalidateAdminDashboardCache } from './adminDashboardCache';
 
 /**
- * When a quotation is accepted, create a pending tender payment (if missing) so it
- * appears under procurement Payments and the vendor My payments / eSewa flow.
+ * When a tender is awarded, create a pending tender payment (if missing) so it
+ * appears under procurement Payments and vendor My payments (view-only; vendors do not initiate eSewa).
  */
 export async function ensurePaymentForAwardedBid(
   bid: mongoose.HydratedDocument<IBid>,
@@ -36,6 +36,7 @@ export async function ensurePaymentForAwardedBid(
     bid: bid._id,
     vendor: vendor._id,
     vendorName: vendor.name,
+    vendorRegistrationNumber: vendor.registrationNumber || '',
     amount: Number(bid.amount || 0),
     status: 'Pending',
     method: 'eSewa',
@@ -45,7 +46,7 @@ export async function ensurePaymentForAwardedBid(
     qrImage: '',
     createdBy: auditUserId,
     updatedBy: auditUserId,
-    notes: 'Created when the quotation was accepted.',
+    notes: 'Created when the tender was awarded.',
   });
   await payment.save();
 
@@ -56,8 +57,8 @@ export async function ensurePaymentForAwardedBid(
   if (vendorUser) {
     await Notification.create({
       user: vendorUser._id,
-      title: 'Pay tender fee (eSewa)',
-      body: `Your quotation was accepted. Pay NPR ${payment.amount} for "${payment.tenderReference}" from My payments.`,
+      title: 'Tender awarded',
+      body: `"${payment.tenderReference}" has been awarded to you. Amount NPR ${payment.amount} has been recorded. Procurement will complete payment; you can track status in My payments.`,
       link: '/my-payments',
       type: 'payment_pending',
     });

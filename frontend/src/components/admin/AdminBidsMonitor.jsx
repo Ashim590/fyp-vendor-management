@@ -83,10 +83,7 @@ const AdminBidsMonitor = () => {
 
   return (
     <WorkspacePageLayout>
-      <WorkspacePageHeader
-        title="Bids monitor"
-        description="Track all tender bids (admin and procurement). Open a tender for full bid detail, or remove a bid from this list when required."
-      />
+      <WorkspacePageHeader title="Bids monitor" />
 
       {error ? (
         <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
@@ -99,7 +96,7 @@ const AdminBidsMonitor = () => {
           <TableRow className="hover:bg-transparent">
             <TableHead>Tender</TableHead>
             <TableHead>Vendor</TableHead>
-            <TableHead>Amount</TableHead>
+            <TableHead>Total (incl. VAT)</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Submitted</TableHead>
             <TableHead className="text-right">Actions</TableHead>

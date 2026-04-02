@@ -7,9 +7,12 @@ export interface IVendor extends Document {
   email: string;
   phoneNumber: string;
   address?: string;
+  province?: string;
+  district?: string;
   description?: string;
   website?: string;
   category: string;
+  panNumber?: string;
   taxId?: string;
   businessLicense?: string;
   logo?: string;
@@ -17,6 +20,7 @@ export interface IVendor extends Document {
   rating: number;
   totalOrders: number;
   bankDetails?: {
+    esewaId?: string;
     bankName?: string;
     accountNumber?: string;
     accountName?: string;
@@ -28,6 +32,7 @@ export interface IVendor extends Document {
     phone?: string;
   };
   isVerified: boolean;
+  settlementVerified?: boolean;
   documents: Array<{
     name: string;
     url: string;
@@ -44,6 +49,8 @@ const VendorSchema: Schema<IVendor> = new Schema(
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     phoneNumber: { type: String, required: true, trim: true },
     address: { type: String, trim: true },
+    province: { type: String, trim: true },
+    district: { type: String, trim: true },
     description: { type: String, trim: true },
     website: { type: String, trim: true },
     category: {
@@ -60,6 +67,7 @@ const VendorSchema: Schema<IVendor> = new Schema(
       ],
       default: 'other'
     },
+    panNumber: { type: String, trim: true },
     taxId: { type: String, trim: true },
     businessLicense: { type: String, trim: true },
     registrationNumber: { type: String, trim: true },
@@ -72,6 +80,7 @@ const VendorSchema: Schema<IVendor> = new Schema(
     rating: { type: Number, default: 0, min: 0, max: 5 },
     totalOrders: { type: Number, default: 0 },
     bankDetails: {
+      esewaId: { type: String, trim: true },
       bankName: { type: String, trim: true },
       accountNumber: { type: String, trim: true },
       accountName: { type: String, trim: true },
@@ -83,6 +92,7 @@ const VendorSchema: Schema<IVendor> = new Schema(
       phone: { type: String, trim: true }
     },
     isVerified: { type: Boolean, default: false },
+    settlementVerified: { type: Boolean, default: false },
     documents: [
       {
         name: { type: String },

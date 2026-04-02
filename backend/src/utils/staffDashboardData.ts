@@ -26,7 +26,25 @@ export type StaffDashboardBody = {
  * Payment rollups were unused by the app and added a heavy $facet on every
  * `/session/staff-home` and `/dashboard/summary` — omit until a UI needs them.
  */
+/** One compute at a time when cache is cold (avoids stampede on /session/staff-home). */
+let staffDashboardComputeInflight: Promise<StaffDashboardBody> | null = null;
+
+function getOrComputeStaffDashboardBody(): Promise<StaffDashboardBody> {
+  if (staffDashboardComputeInflight) return staffDashboardComputeInflight;
+  staffDashboardComputeInflight = computeStaffDashboardBody().finally(() => {
+    staffDashboardComputeInflight = null;
+  });
+  return staffDashboardComputeInflight;
+}
+
+function onTimeWindowStart(): Date {
+  const d = new Date();
+  d.setMonth(d.getMonth() - 18);
+  return d;
+}
+
 export async function computeStaffDashboardBody(): Promise<StaffDashboardBody> {
+  const since = onTimeWindowStart();
   const [activeTenders, activeOrders, delayedDeliveries, onTimeAgg] =
     await Promise.all([
     Tender.countDocuments({ status: { $in: ['PUBLISHED', 'DRAFT'] } }),
@@ -34,11 +52,12 @@ export async function computeStaffDashboardBody(): Promise<StaffDashboardBody> {
       status: { $in: ['draft', 'pending', 'approved', 'issued', 'partial'] },
     }),
     Delivery.countDocuments({ delayReason: { $exists: true, $nin: [null, ''] } }),
+    /** Bounded window keeps aggregate fast as the delivery collection grows. */
     Delivery.aggregate([
       {
         $match: {
           status: { $in: ['delivered', 'received', 'inspected'] },
-          actualDate: { $exists: true, $ne: null },
+          actualDate: { $exists: true, $ne: null, $gte: since },
           expectedDate: { $exists: true, $ne: null },
         },
       },
@@ -84,7 +103,7 @@ export async function resolveStaffDashboardForApi(
       return { body: cached as StaffDashboardBody, cacheHit: true };
     }
   }
-  const body = await computeStaffDashboardBody();
+  const body = await getOrComputeStaffDashboardBody();
   setCachedStaffSummary(body);
   return { body, cacheHit: false };
 }

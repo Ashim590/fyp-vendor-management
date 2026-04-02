@@ -38,6 +38,10 @@ export interface IPurchaseRequest extends Document {
   justification?: string;
   notes?: string;
   linkedTender?: mongoose.Types.ObjectId;
+  isDeleted?: boolean;
+  deletedAt?: Date;
+  trashPurgeAt?: Date;
+  deletedBy?: mongoose.Types.ObjectId;
 }
 
 const PurchaseRequestItemSchema = new Schema<IPurchaseRequestItem>(
@@ -86,7 +90,11 @@ const PurchaseRequestSchema: Schema<IPurchaseRequest> = new Schema(
     deliveryLocation: { type: String, required: true, trim: true },
     justification: { type: String, default: '' },
     notes: { type: String, default: '' },
-    linkedTender: { type: Schema.Types.ObjectId, ref: 'Tender', sparse: true, index: true }
+    linkedTender: { type: Schema.Types.ObjectId, ref: 'Tender', sparse: true, index: true },
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: { type: Date, index: true },
+    trashPurgeAt: { type: Date, index: true },
+    deletedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }
 );
@@ -94,6 +102,8 @@ const PurchaseRequestSchema: Schema<IPurchaseRequest> = new Schema(
 PurchaseRequestSchema.index({ createdAt: -1 });
 PurchaseRequestSchema.index({ requester: 1, createdAt: -1 });
 PurchaseRequestSchema.index({ status: 1, createdAt: -1 });
+PurchaseRequestSchema.index({ isDeleted: 1, createdAt: -1 });
+PurchaseRequestSchema.index({ isDeleted: 1, trashPurgeAt: 1 });
 
 PurchaseRequestSchema.pre('save', async function (next) {
   try {

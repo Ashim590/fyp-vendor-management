@@ -3,7 +3,6 @@ import { authenticate, authorize, AuthRequest } from '../middleware/auth';
 import Quotation from '../models/Quotation';
 import PurchaseRequest from '../models/PurchaseRequest';
 import Vendor from '../models/Vendor';
-import User from '../models/User';
 import {
   mergeWithCursorFilter,
   parseListLimit,
@@ -11,6 +10,51 @@ import {
 } from '../utils/cursorPagination';
 
 const router = express.Router();
+
+/** List view: no line-item arrays / attachments — keeps procurement pages fast over slow links. */
+async function aggregateQuotationListPage(
+  merged: Record<string, unknown>,
+  pageLimit: number,
+) {
+  const prColl = PurchaseRequest.collection.collectionName;
+  const raw = await Quotation.aggregate([
+    { $match: merged },
+    { $sort: { createdAt: -1, _id: -1 } },
+    { $limit: pageLimit + 1 },
+    {
+      $project: {
+        quotationNumber: 1,
+        purchaseRequest: 1,
+        vendor: 1,
+        vendorName: 1,
+        totalAmount: 1,
+        subtotal: 1,
+        currency: 1,
+        validityDate: 1,
+        deliveryDate: 1,
+        status: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        itemsCount: { $size: { $ifNull: ['$items', []] } },
+      },
+    },
+    {
+      $lookup: {
+        from: prColl,
+        localField: 'purchaseRequest',
+        foreignField: '_id',
+        as: '_pr',
+        pipeline: [{ $project: { requestNumber: 1 } }],
+      },
+    },
+    { $addFields: { purchaseRequest: { $arrayElemAt: ['$_pr', 0] } } },
+    { $project: { _pr: 0 } },
+  ]);
+  return trimExtraDoc(
+    raw as Array<{ createdAt?: Date; _id: unknown }>,
+    pageLimit,
+  );
+}
 
 router.post(
   '/create',
@@ -54,18 +98,20 @@ router.get(
     const pageLimit = parseListLimit(req.query.limit, 40, 100);
     const cursor =
       typeof req.query.cursor === 'string' ? req.query.cursor : undefined;
+    const base: Record<string, unknown> = {};
+    if (req.user?.role === 'VENDOR' && req.user.vendorProfile) {
+      base.vendor = req.user.vendorProfile;
+    }
     let merged: Record<string, unknown>;
     try {
-      merged = mergeWithCursorFilter({}, cursor);
+      merged = mergeWithCursorFilter(base, cursor);
     } catch {
       return res.status(400).json({ success: false, message: 'Invalid cursor' });
     }
-    const raw = await Quotation.find(merged)
-      .sort({ createdAt: -1, _id: -1 })
-      .limit(pageLimit + 1)
-      .populate('purchaseRequest', 'requestNumber')
-      .lean();
-    const { items, nextCursor, hasMore } = trimExtraDoc(raw, pageLimit);
+    const { items, nextCursor, hasMore } = await aggregateQuotationListPage(
+      merged,
+      pageLimit,
+    );
     res.json({ success: true, quotations: items, nextCursor, hasMore });
   }
 );
@@ -77,10 +123,40 @@ router.get(
   async (req: AuthRequest, res) => {
     const vendorProfile = req.user?.vendorProfile;
     if (!vendorProfile) return res.json({ success: true, quotations: [] });
-    const quotations = await Quotation.find({ vendor: vendorProfile })
-      .sort({ createdAt: -1 })
-      .limit(200)
-      .populate('purchaseRequest', 'requestNumber');
+    const prColl = PurchaseRequest.collection.collectionName;
+    const quotations = await Quotation.aggregate([
+      { $match: { vendor: vendorProfile } },
+      { $sort: { createdAt: -1 } },
+      { $limit: 200 },
+      {
+        $project: {
+          quotationNumber: 1,
+          purchaseRequest: 1,
+          vendor: 1,
+          vendorName: 1,
+          totalAmount: 1,
+          subtotal: 1,
+          currency: 1,
+          validityDate: 1,
+          deliveryDate: 1,
+          status: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          itemsCount: { $size: { $ifNull: ['$items', []] } },
+        },
+      },
+      {
+        $lookup: {
+          from: prColl,
+          localField: 'purchaseRequest',
+          foreignField: '_id',
+          as: '_pr',
+          pipeline: [{ $project: { requestNumber: 1 } }],
+        },
+      },
+      { $addFields: { purchaseRequest: { $arrayElemAt: ['$_pr', 0] } } },
+      { $project: { _pr: 0 } },
+    ]);
     res.json({ success: true, quotations });
   }
 );
@@ -100,12 +176,10 @@ router.get(
     } catch {
       return res.status(400).json({ success: false, message: 'Invalid cursor' });
     }
-    const raw = await Quotation.find(merged)
-      .sort({ createdAt: -1, _id: -1 })
-      .limit(pageLimit + 1)
-      .populate('purchaseRequest', 'requestNumber')
-      .lean();
-    const { items, nextCursor, hasMore } = trimExtraDoc(raw, pageLimit);
+    const { items, nextCursor, hasMore } = await aggregateQuotationListPage(
+      merged,
+      pageLimit,
+    );
     res.json({ success: true, quotations: items, nextCursor, hasMore });
   }
 );

@@ -38,7 +38,12 @@ router.get(
         const dMark = perfLabel('staff-home:dashboard');
         console.time(nMark);
         console.time(dMark);
-        const notifP = loadNotificationPageForUser(req.user!._id, pageLimit, cursor).finally(
+        const notifP = loadNotificationPageForUser(
+          req.user!._id,
+          pageLimit,
+          cursor,
+          { viewerRole: req.user!.role },
+        ).finally(
           () => console.timeEnd(nMark),
         );
         const dashP = resolveStaffDashboardForApi(bypassCache).finally(() =>
