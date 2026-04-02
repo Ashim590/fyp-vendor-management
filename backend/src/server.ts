@@ -1,10 +1,14 @@
-import express from 'express';
-import cors from 'cors';
+/** Patches Express to forward rejected Promises from async route handlers to error middleware. */
+import 'express-async-errors';
+import express, { type NextFunction, type Request, type Response } from 'express';
+import type { Server } from 'http';
+import cors, { type CorsOptions } from 'cors';
 import compression from 'compression';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
 
 import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
@@ -35,44 +39,104 @@ process.on('unhandledRejection', (reason) => {
 });
 
 const app = express();
+/** Behind Render/nginx: correct client IP + sane express-rate-limit keying. */
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
 /** Avoid 304 Not Modified on JSON APIs — Axios treats 304 as an error by default. */
 app.set('etag', false);
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/paropakar_vendornet';
+const MONGO_URI =
+  process.env.MONGO_URI || 'mongodb://localhost:27017/paropakar_vendornet';
 const PORT = Number(process.env.PORT) || 5000;
+const isProduction = process.env.NODE_ENV === 'production';
 
-const clientOrigins = (
-  process.env.CLIENT_ORIGINS ||
-  'http://localhost:5173,http://localhost:5174,http://localhost:5175'
-)
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+const defaultClientOrigins =
+  'http://localhost:5173,http://localhost:5174,http://localhost:5175';
 
-app.use(
-  cors({
-    origin: clientOrigins.length === 1 ? clientOrigins[0] : clientOrigins,
-    credentials: true
-  })
+function normalizeClientOrigins(raw: string): string[] {
+  const parsed = raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parsed.length === 0) return defaultClientOrigins.split(',');
+  return parsed;
+}
+
+const clientOrigins = normalizeClientOrigins(
+  process.env.CLIENT_ORIGINS || defaultClientOrigins,
 );
+
+/** JSON API: relax CSP (no HTML); allow cross-origin fetches from separate Vercel origin. */
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    contentSecurityPolicy: false,
+  }),
+);
+
+/**
+ * CORS: allow only listed origins; allow requests with no Origin (curl, mobile apps, server-to-server).
+ */
+const corsOptions: CorsOptions = {
+  origin(origin, callback) {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+    if (clientOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(null, false);
+  },
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'tiny' : 'dev'));
+app.use(morgan(isProduction ? 'tiny' : 'dev'));
 /** Optional: set API_PERF_LOG=1 for request timing + JSON response size in logs. */
 app.use(apiPerfLogMiddleware);
 
-if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+if (isProduction && !process.env.JWT_SECRET) {
   console.error('FATAL: JWT_SECRET must be set in production.');
   process.exit(1);
 }
+
+function logDeployConfigHints() {
+  const isLocalhost = (v: string) =>
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(v);
+
+  if (isProduction && clientOrigins.every(isLocalhost)) {
+    console.warn(
+      '[deploy] CLIENT_ORIGINS looks localhost-only; browser CORS calls from your real frontend domain may fail.',
+    );
+  }
+  if (isProduction && /localhost|127\.0\.0\.1/i.test(MONGO_URI)) {
+    console.warn(
+      '[deploy] MONGO_URI points to localhost. Use Atlas or another reachable Mongo instance on hosted environments.',
+    );
+  }
+
+  const backendUrl = process.env.BACKEND_URL || process.env.SERVER_BASE_URL;
+  const frontendUrl = process.env.FRONTEND_URL || process.env.CLIENT_BASE_URL;
+  if (isProduction && (!backendUrl || !frontendUrl)) {
+    console.warn(
+      '[deploy] BACKEND_URL/FRONTEND_URL are not fully set. Payment callbacks and redirects may fail in production.',
+    );
+  }
+}
+logDeployConfigHints();
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 60,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: 'Too many requests, please try again later.' }
+  message: { message: 'Too many requests, please try again later.' },
 });
 
 app.use('/api/auth/login', authLimiter);
@@ -83,11 +147,15 @@ app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     service: 'Paropakar VendorNet API',
-    time: new Date().toISOString()
+    time: new Date().toISOString(),
   });
 });
 
-/** Canonical REST paths */
+/**
+ * Route versioning: `/api/v1/*` is what the current frontend uses.
+ * `/api/*` (without v1) remains mounted for older clients or direct testing — same router instances.
+ * Prefer new integrations against `/api/v1/*` only.
+ */
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/vendors', vendorRoutes);
@@ -95,7 +163,6 @@ app.use('/api/tenders', tenderRoutes);
 app.use('/api/bids', bidRoutes);
 app.use('/api/settings', settingsRoutes);
 
-/** Paths matching the current frontend (`/api/v1/*`) */
 app.use('/api/v1/tenders', tenderRoutes);
 app.use('/api/v1/bids', bidRoutes);
 app.use('/api/v1/vendor', vendorRoutes);
@@ -114,6 +181,50 @@ app.use('/api/v1/invoice-payment', invoicePaymentRoutes);
 app.use('/api/v1/audit-log', auditLogRoutes);
 app.use('/api/admin/vendors', adminVendorsRoutes);
 
+function getHttpErrorStatus(err: unknown): number {
+  if (err && typeof err === 'object' && 'status' in err) {
+    const s = (err as { status?: number }).status;
+    if (typeof s === 'number' && s >= 400 && s < 600) return s;
+  }
+  if (err && typeof err === 'object' && 'statusCode' in err) {
+    const s = (err as { statusCode?: number }).statusCode;
+    if (typeof s === 'number' && s >= 400 && s < 600) return s;
+  }
+  return 500;
+}
+
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return 'Internal Server Error';
+}
+
+/** 404 — must be after all route mounts, before error handler. */
+app.use((req: Request, res: Response) => {
+  res.status(404).json({
+    message: 'Route not found',
+    path: req.originalUrl,
+  });
+});
+
+/** Global error handler — must be last; 4-arg signature required. */
+app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
+  const status = getHttpErrorStatus(err);
+  const publicMessage =
+    status === 500 && isProduction
+      ? 'Internal Server Error'
+      : getErrorMessage(err);
+  if (status >= 500) {
+    console.error(err);
+  } else {
+    console.warn(getErrorMessage(err));
+  }
+  res.status(status).json({ message: publicMessage });
+});
+
 /** Wire compression helps on high-latency links to Atlas (disable with MONGO_DISABLE_COMPRESSION=1). */
 const mongoOptions: mongoose.ConnectOptions = {
   maxPoolSize: 50,
@@ -126,6 +237,36 @@ if (process.env.MONGO_DISABLE_COMPRESSION !== '1') {
   mongoOptions.zlibCompressionLevel = 6;
 }
 
+let httpServer: Server | null = null;
+
+function shutdown(signal: string): void {
+  console.log(`${signal} received, shutting down gracefully`);
+  if (!httpServer) {
+    void mongoose.disconnect().finally(() => process.exit(0));
+    return;
+  }
+  httpServer.close((closeErr) => {
+    if (closeErr) console.error('HTTP server close error:', closeErr);
+    mongoose
+      .disconnect()
+      .then(() => {
+        console.log('MongoDB disconnected');
+        process.exit(0);
+      })
+      .catch((e) => {
+        console.error('MongoDB disconnect error:', e);
+        process.exit(1);
+      });
+  });
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 15_000).unref();
+}
+
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => shutdown('SIGINT'));
+
 mongoose
   .connect(MONGO_URI, mongoOptions)
   .then(async () => {
@@ -134,9 +275,12 @@ mongoose
       const db = mongoose.connection.getClient().db();
       await db.admin().command({ ping: 1 });
     } catch (e) {
-      console.warn('Mongo warm-up ping failed (non-fatal):', (e as Error)?.message);
+      console.warn(
+        'Mongo warm-up ping failed (non-fatal):',
+        (e as Error)?.message,
+      );
     }
-    app.listen(PORT, () => {
+    httpServer = app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
       console.log(`Allowed CORS origins: ${clientOrigins.join(', ')}`);
     });

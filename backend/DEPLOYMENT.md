@@ -121,9 +121,17 @@ This updates the existing `users` collection in-place:
 - lowercases `email`
 - ensures `isActive` exists
 
+## Production middleware (implemented in `src/server.ts`)
+- **`helmet`** — security-related HTTP headers; CSP disabled for JSON API, `crossOriginResourcePolicy: cross-origin` for separate Vercel origin.
+- **`express-async-errors`** — async route rejections propagate to the global error handler.
+- **CORS** — allowlist via `CLIENT_ORIGINS`; requests with no `Origin` header are allowed (e.g. curl, server-to-server).
+- **404** — JSON `{ message, path }` for unknown routes.
+- **Global error handler** — consistent JSON errors; 500 details hidden in production.
+- **Graceful shutdown** — `SIGTERM` / `SIGINT` close HTTP server and `mongoose.disconnect()`.
+
 ## Security checklist (recommended next steps)
 - Add input validation (e.g. Zod / express-validator) for all request bodies.
-- Add `helmet` + strict security headers.
+- Tighten `helmet` / CSP if serving HTML from this process.
 - Implement refresh tokens / token revocation (blacklist or rotating JWTs).
 - Move file uploads (logo/documents) to object storage (S3/R2) instead of in-memory/base64 for large files.
 - Add audit logging for all admin actions (vendor verify, bid accept/reject, tender publish/close).
