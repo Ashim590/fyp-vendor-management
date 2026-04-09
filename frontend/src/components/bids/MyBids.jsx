@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { BID_API_END_POINT, PAYMENT_API_END_POINT } from "@/utils/constant";
@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import {
   WorkspacePageLayout,
   WorkspacePageHeader,
+  WorkspaceSegmentedControl,
 } from "../layout/WorkspacePageLayout";
 
 const statusConfig = {
@@ -25,6 +26,25 @@ const MyBids = () => {
   const [paymentsByTender, setPaymentsByTender] = useState({});
   const [loading, setLoading] = useState(true);
   const [openBidId, setOpenBidId] = useState(null);
+  const [quotationFilter, setQuotationFilter] = useState(
+    /** @type {"all" | "selected" | "not_selected"} */ ("all"),
+  );
+
+  const quotationFilterCounts = useMemo(() => {
+    const selected = bids.filter((b) => b.status === "ACCEPTED").length;
+    const notSelected = bids.filter((b) => b.status !== "ACCEPTED").length;
+    return { all: bids.length, selected, notSelected };
+  }, [bids]);
+
+  const filteredBids = useMemo(() => {
+    if (quotationFilter === "selected") {
+      return bids.filter((b) => b.status === "ACCEPTED");
+    }
+    if (quotationFilter === "not_selected") {
+      return bids.filter((b) => b.status !== "ACCEPTED");
+    }
+    return bids;
+  }, [bids, quotationFilter]);
 
   const loadBids = () => {
     setLoading(true);
@@ -126,7 +146,39 @@ const MyBids = () => {
           </div>
         ) : (
           <div className="space-y-4">
-            {bids.map((bid) => {
+            <WorkspaceSegmentedControl
+              value={quotationFilter}
+              onChange={setQuotationFilter}
+              options={[
+                {
+                  value: "all",
+                  label: `All (${quotationFilterCounts.all})`,
+                },
+                {
+                  value: "selected",
+                  label: `Selected (${quotationFilterCounts.selected})`,
+                },
+                {
+                  value: "not_selected",
+                  label: `Not selected (${quotationFilterCounts.notSelected})`,
+                },
+              ]}
+              className="w-full max-w-xl flex-wrap sm:flex-nowrap"
+            />
+            {filteredBids.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-8 text-center text-sm font-medium text-slate-600">
+                No quotations match this filter. Try{" "}
+                <button
+                  type="button"
+                  className="font-semibold text-teal-800 underline-offset-2 hover:underline"
+                  onClick={() => setQuotationFilter("all")}
+                >
+                  All
+                </button>
+                .
+              </p>
+            ) : null}
+            {filteredBids.map((bid) => {
               const cfg = statusConfig[bid.status] || statusConfig.SUBMITTED;
               const t = bid.tender;
               const docs = Array.isArray(bid.documents) ? bid.documents : [];

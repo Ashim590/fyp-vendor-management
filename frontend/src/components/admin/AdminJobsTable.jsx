@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '../ui/table'
+import { cn } from '@/lib/utils'
+import { WORKSPACE_DATA_TABLE_CLASS } from '../layout/WorkspacePageLayout'
 import { Avatar, AvatarImage } from '../ui/avatar'
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
 import { Edit2, Eye, MoreHorizontal } from 'lucide-react'
@@ -12,8 +14,7 @@ const AdminJobsTable = () => {
     const [filterJobs, setFilterJobs] = useState(allAdminJobs);
     const navigate = useNavigate();
 
-    useEffect(()=>{ 
-        console.log('called');
+    useEffect(()=>{
         const filteredJobs = allAdminJobs.filter((job)=>{
             if(!searchJobByText){
                 return true;
@@ -25,24 +26,30 @@ const AdminJobsTable = () => {
     },[allAdminJobs,searchJobByText])
     return (
         <div>
-            <Table>
+            <Table className={cn(WORKSPACE_DATA_TABLE_CLASS, "table-fixed")}>
                 <TableCaption>A list of your recent  posted jobs</TableCaption>
+                <colgroup>
+                    <col className="w-[30%]" />
+                    <col className="w-[36%]" />
+                    <col className="w-[20%]" />
+                    <col className="w-[14%]" />
+                </colgroup>
                 <TableHeader>
                     <TableRow>
-                        <TableHead>Company Name</TableHead>
-                        <TableHead>Role</TableHead>
-                        <TableHead>Date</TableHead>
+                        <TableHead className="text-left">Company Name</TableHead>
+                        <TableHead className="text-left">Role</TableHead>
+                        <TableHead className="text-left">Date</TableHead>
                         <TableHead className="text-right">Action</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {
                         filterJobs?.map((job) => (
-                            <tr>
-                                <TableCell>{job?.company?.name}</TableCell>
-                                <TableCell>{job?.title}</TableCell>
-                                <TableCell>{job?.createdAt.split("T")[0]}</TableCell>
-                                <TableCell className="text-right cursor-pointer">
+                            <TableRow key={job._id}>
+                                <TableCell className="min-w-0 truncate">{job?.company?.name}</TableCell>
+                                <TableCell className="min-w-0 truncate">{job?.title}</TableCell>
+                                <TableCell className="min-w-0 whitespace-nowrap">{job?.createdAt.split("T")[0]}</TableCell>
+                                <TableCell className="min-w-0 text-right cursor-pointer">
                                     <Popover>
                                         <PopoverTrigger><MoreHorizontal /></PopoverTrigger>
                                         <PopoverContent className="w-32">
@@ -57,7 +64,7 @@ const AdminJobsTable = () => {
                                         </PopoverContent>
                                     </Popover>
                                 </TableCell>
-                            </tr>
+                            </TableRow>
 
                         ))
                     }

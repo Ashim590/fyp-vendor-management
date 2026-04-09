@@ -52,7 +52,10 @@ const Profile = () => {
     newPassword: "",
     confirmPassword: "",
   });
-  const prefStorageKey = useMemo(() => `profile_prefs_${currentRole}_${user?.id || "me"}`, [currentRole, user?.id]);
+  const prefStorageKey = useMemo(
+    () => `profile_prefs_${currentRole}_${user?.id || "me"}`,
+    [currentRole, user?.id],
+  );
   const [preferences, setPreferences] = useState({
     vendorApprovals: true,
     prApprovals: true,
@@ -116,8 +119,11 @@ const Profile = () => {
             email: me?.email || user?.email || "",
             phoneNumber: me?.phoneNumber || "",
             profilePhoto: me?.profilePhoto || "",
-            profile: { ...(user?.profile || {}), profilePhoto: me?.profilePhoto || "" },
-          })
+            profile: {
+              ...(user?.profile || {}),
+              profilePhoto: me?.profilePhoto || "",
+            },
+          }),
         );
       } catch (error) {
         toast.error(error?.response?.data?.message || "Failed to load profile");
@@ -163,8 +169,11 @@ const Profile = () => {
           email: me?.email || "",
           phoneNumber: me?.phoneNumber || "",
           profilePhoto: me?.profilePhoto || "",
-          profile: { ...(user?.profile || {}), profilePhoto: me?.profilePhoto || "" },
-        })
+          profile: {
+            ...(user?.profile || {}),
+            profilePhoto: me?.profilePhoto || "",
+          },
+        }),
       );
       toast.success("Personal information updated");
     } catch (error) {
@@ -190,10 +199,16 @@ const Profile = () => {
         currentPassword: securityForm.currentPassword,
         newPassword: securityForm.newPassword,
       });
-      setSecurityForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setSecurityForm({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
       toast.success("Password updated successfully");
     } catch (error) {
-      toast.error(error?.response?.data?.message || "Failed to update password");
+      toast.error(
+        error?.response?.data?.message || "Failed to update password",
+      );
     } finally {
       setSavingPassword(false);
     }
@@ -240,7 +255,9 @@ const Profile = () => {
       }
       toast.success("Company details updated");
     } catch (error) {
-      toast.error(error?.response?.data?.message || "Failed to update company details");
+      toast.error(
+        error?.response?.data?.message || "Failed to update company details",
+      );
     } finally {
       setSavingVendorInfo(false);
     }
@@ -262,7 +279,11 @@ const Profile = () => {
     }));
   };
 
-  const roleLabel = isAdmin ? "Administrator" : isStaff ? "Procurement Officer" : "Vendor";
+  const roleLabel = isAdmin
+    ? "Administrator"
+    : isStaff
+      ? "Procurement Officer"
+      : "Vendor";
   const notifRows = isAdmin
     ? [
         ["vendorApprovals", "New vendor approvals"],
@@ -290,36 +311,58 @@ const Profile = () => {
         <section className="rounded-3xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
           <div className="flex items-center gap-4">
             <Avatar className="h-16 w-16">
-              <AvatarImage src={profile?.profilePhoto || ""} alt={profile?.name || "Admin"} />
-              <AvatarFallback>{String(profile?.name || "A").charAt(0).toUpperCase()}</AvatarFallback>
+              <AvatarImage
+                src={profile?.profilePhoto || ""}
+                alt={profile?.name || "Admin"}
+              />
+              <AvatarFallback>
+                {String(profile?.name || "A")
+                  .charAt(0)
+                  .toUpperCase()}
+              </AvatarFallback>
             </Avatar>
             <div>
-              <h1 className="text-xl font-semibold text-slate-900">{profile?.name || user?.name || roleLabel}</h1>
+              <h1 className="text-xl font-semibold text-slate-900">
+                {profile?.name || user?.name || roleLabel}
+              </h1>
               <div className="mt-1 flex items-center gap-2">
                 <Badge>{roleLabel}</Badge>
-                <span className="text-xs text-slate-500">ID: {String(profile?._id || user?.id || "N/A")}</span>
+                <span className="text-xs text-slate-500">
+                  ID: {String(profile?._id || user?.id || "N/A")}
+                </span>
               </div>
             </div>
           </div>
         </section>
 
         <section className="grid gap-6 md:grid-cols-2">
-          <form onSubmit={onSavePersonal} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-            <h2 className="text-base font-semibold text-slate-900">Personal Info & Contact</h2>
+          <form
+            onSubmit={onSavePersonal}
+            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3"
+          >
+            <h2 className="text-base font-semibold text-slate-900">
+              Personal Info & Contact
+            </h2>
             <Input
               value={personalForm.name}
-              onChange={(e) => setPersonalForm((p) => ({ ...p, name: e.target.value }))}
+              onChange={(e) =>
+                setPersonalForm((p) => ({ ...p, name: e.target.value }))
+              }
               placeholder="Full name"
             />
             <Input
               type="email"
               value={personalForm.email}
-              onChange={(e) => setPersonalForm((p) => ({ ...p, email: e.target.value }))}
+              onChange={(e) =>
+                setPersonalForm((p) => ({ ...p, email: e.target.value }))
+              }
               placeholder="Email"
             />
             <Input
               value={personalForm.phoneNumber}
-              onChange={(e) => setPersonalForm((p) => ({ ...p, phoneNumber: e.target.value }))}
+              onChange={(e) =>
+                setPersonalForm((p) => ({ ...p, phoneNumber: e.target.value }))
+              }
               placeholder="Phone number"
             />
             <Input type="file" accept="image/*" onChange={onProfilePhotoFile} />
@@ -339,24 +382,41 @@ const Profile = () => {
             </div>
           </form>
 
-          <form onSubmit={onChangePassword} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-            <h2 className="text-base font-semibold text-slate-900">Security & Password</h2>
+          <form
+            onSubmit={onChangePassword}
+            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3"
+          >
+            <h2 className="text-base font-semibold text-slate-900">
+              Security & Password
+            </h2>
             <Input
               type="password"
               value={securityForm.currentPassword}
-              onChange={(e) => setSecurityForm((p) => ({ ...p, currentPassword: e.target.value }))}
+              onChange={(e) =>
+                setSecurityForm((p) => ({
+                  ...p,
+                  currentPassword: e.target.value,
+                }))
+              }
               placeholder="Current password"
             />
             <Input
               type="password"
               value={securityForm.newPassword}
-              onChange={(e) => setSecurityForm((p) => ({ ...p, newPassword: e.target.value }))}
+              onChange={(e) =>
+                setSecurityForm((p) => ({ ...p, newPassword: e.target.value }))
+              }
               placeholder="New password"
             />
             <Input
               type="password"
               value={securityForm.confirmPassword}
-              onChange={(e) => setSecurityForm((p) => ({ ...p, confirmPassword: e.target.value }))}
+              onChange={(e) =>
+                setSecurityForm((p) => ({
+                  ...p,
+                  confirmPassword: e.target.value,
+                }))
+              }
               placeholder="Confirm new password"
             />
             <Button type="submit" disabled={savingPassword || loading}>
@@ -367,26 +427,132 @@ const Profile = () => {
 
         {isVendor && (
           <section>
-            <form onSubmit={onSaveVendorInfo} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-              <h2 className="text-base font-semibold text-slate-900">Company Info & Contact</h2>
-              <Input value={vendorForm.companyName} onChange={(e) => setVendorForm((p) => ({ ...p, companyName: e.target.value }))} placeholder="Company name" />
-              <Input type="email" value={vendorForm.companyEmail} onChange={(e) => setVendorForm((p) => ({ ...p, companyEmail: e.target.value }))} placeholder="Company email" />
-              <Input value={vendorForm.companyPhone} onChange={(e) => setVendorForm((p) => ({ ...p, companyPhone: e.target.value }))} placeholder="Company phone" />
-              <Input value={vendorForm.address} onChange={(e) => setVendorForm((p) => ({ ...p, address: e.target.value }))} placeholder="Address" />
+            <form
+              onSubmit={onSaveVendorInfo}
+              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3"
+            >
+              <h2 className="text-base font-semibold text-slate-900">
+                Company Info & Contact
+              </h2>
+              <Input
+                value={vendorForm.companyName}
+                onChange={(e) =>
+                  setVendorForm((p) => ({ ...p, companyName: e.target.value }))
+                }
+                placeholder="Company name"
+              />
+              <Input
+                type="email"
+                value={vendorForm.companyEmail}
+                onChange={(e) =>
+                  setVendorForm((p) => ({ ...p, companyEmail: e.target.value }))
+                }
+                placeholder="Company email"
+              />
+              <Input
+                value={vendorForm.companyPhone}
+                onChange={(e) =>
+                  setVendorForm((p) => ({ ...p, companyPhone: e.target.value }))
+                }
+                placeholder="Company phone"
+              />
+              <Input
+                value={vendorForm.address}
+                onChange={(e) =>
+                  setVendorForm((p) => ({ ...p, address: e.target.value }))
+                }
+                placeholder="Address"
+              />
               <div className="grid gap-3 sm:grid-cols-2">
-                <Input value={vendorForm.province} onChange={(e) => setVendorForm((p) => ({ ...p, province: e.target.value }))} placeholder="Province" />
-                <Input value={vendorForm.district} onChange={(e) => setVendorForm((p) => ({ ...p, district: e.target.value }))} placeholder="District" />
+                <Input
+                  value={vendorForm.province}
+                  onChange={(e) =>
+                    setVendorForm((p) => ({ ...p, province: e.target.value }))
+                  }
+                  placeholder="Province"
+                />
+                <Input
+                  value={vendorForm.district}
+                  onChange={(e) =>
+                    setVendorForm((p) => ({ ...p, district: e.target.value }))
+                  }
+                  placeholder="District"
+                />
               </div>
-              <Input value={vendorForm.panNumber} onChange={(e) => setVendorForm((p) => ({ ...p, panNumber: e.target.value }))} placeholder="PAN number" />
-              <Input value={vendorForm.registrationNumber} onChange={(e) => setVendorForm((p) => ({ ...p, registrationNumber: e.target.value }))} placeholder="Registration number" />
-              <Input value={vendorForm.website} onChange={(e) => setVendorForm((p) => ({ ...p, website: e.target.value }))} placeholder="Website" />
-              <Input value={vendorForm.authorizedPersonName} onChange={(e) => setVendorForm((p) => ({ ...p, authorizedPersonName: e.target.value }))} placeholder="Authorized person name" />
+              <Input
+                value={vendorForm.panNumber}
+                onChange={(e) =>
+                  setVendorForm((p) => ({ ...p, panNumber: e.target.value }))
+                }
+                placeholder="PAN number"
+              />
+              <Input
+                value={vendorForm.registrationNumber}
+                onChange={(e) =>
+                  setVendorForm((p) => ({
+                    ...p,
+                    registrationNumber: e.target.value,
+                  }))
+                }
+                placeholder="Registration number"
+              />
+              <Input
+                value={vendorForm.website}
+                onChange={(e) =>
+                  setVendorForm((p) => ({ ...p, website: e.target.value }))
+                }
+                placeholder="Website"
+              />
+              <Input
+                value={vendorForm.authorizedPersonName}
+                onChange={(e) =>
+                  setVendorForm((p) => ({
+                    ...p,
+                    authorizedPersonName: e.target.value,
+                  }))
+                }
+                placeholder="Authorized person name"
+              />
               <div className="grid gap-3 sm:grid-cols-2">
-                <Input type="email" value={vendorForm.authorizedPersonEmail} onChange={(e) => setVendorForm((p) => ({ ...p, authorizedPersonEmail: e.target.value }))} placeholder="Authorized person email" />
-                <Input value={vendorForm.authorizedPersonPhone} onChange={(e) => setVendorForm((p) => ({ ...p, authorizedPersonPhone: e.target.value }))} placeholder="Authorized person phone" />
+                <Input
+                  type="email"
+                  value={vendorForm.authorizedPersonEmail}
+                  onChange={(e) =>
+                    setVendorForm((p) => ({
+                      ...p,
+                      authorizedPersonEmail: e.target.value,
+                    }))
+                  }
+                  placeholder="Authorized person email"
+                />
+                <Input
+                  value={vendorForm.authorizedPersonPhone}
+                  onChange={(e) =>
+                    setVendorForm((p) => ({
+                      ...p,
+                      authorizedPersonPhone: e.target.value,
+                    }))
+                  }
+                  placeholder="Authorized person phone"
+                />
               </div>
-              <Input value={vendorForm.settlementEsewaId} onChange={(e) => setVendorForm((p) => ({ ...p, settlementEsewaId: e.target.value }))} placeholder="eSewa settlement ID (Tier 2)" />
-              <Input value={vendorForm.description} onChange={(e) => setVendorForm((p) => ({ ...p, description: e.target.value }))} placeholder="Description" />
+              <Input
+                value={vendorForm.settlementEsewaId}
+                onChange={(e) =>
+                  setVendorForm((p) => ({
+                    ...p,
+                    settlementEsewaId: e.target.value,
+                  }))
+                }
+                placeholder="eSewa settlement ID (Tier 2)"
+              />
+              <Input
+                value={vendorForm.description}
+                onChange={(e) =>
+                  setVendorForm((p) => ({ ...p, description: e.target.value }))
+                }
+                placeholder="Description"
+              />
               <Button type="submit" disabled={savingVendorInfo || loading}>
                 {savingVendorInfo ? "Saving..." : "Save Company Info"}
               </Button>
@@ -395,30 +561,64 @@ const Profile = () => {
         )}
 
         <section className="grid gap-6 md:grid-cols-2">
-          <form onSubmit={onSavePrefs} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-            <h2 className="text-base font-semibold text-slate-900">Preferences & Notifications</h2>
+          <form
+            onSubmit={onSavePrefs}
+            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3"
+          >
+            <h2 className="text-base font-semibold text-slate-900">
+              Preferences & Notifications
+            </h2>
             {notifRows.map(([key, label]) => (
-              <label key={key} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
+              <label
+                key={key}
+                className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              >
                 <span>{label}</span>
                 <input
                   type="checkbox"
                   checked={Boolean(preferences[key])}
-                  onChange={(e) => setPreferences((p) => ({ ...p, [key]: e.target.checked }))}
+                  onChange={(e) =>
+                    setPreferences((p) => ({ ...p, [key]: e.target.checked }))
+                  }
                 />
               </label>
             ))}
-            <p className="text-xs text-slate-500">These preferences are saved on this browser for now.</p>
-            <Button type="submit" disabled={savingPrefs}>{savingPrefs ? "Saving..." : "Save Preferences"}</Button>
+            <p className="text-xs text-slate-500">
+              These preferences are saved on this browser for now.
+            </p>
+            <Button type="submit" disabled={savingPrefs}>
+              {savingPrefs ? "Saving..." : "Save Preferences"}
+            </Button>
           </form>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-            <h2 className="text-base font-semibold text-slate-900">Activity & Account Info</h2>
+            <h2 className="text-base font-semibold text-slate-900">
+              Activity & Account Info
+            </h2>
             <div className="space-y-2 text-sm text-slate-700">
-              <p><span className="font-medium">User ID:</span> {String(profile?._id || user?.id || "N/A")}</p>
-              <p><span className="font-medium">Role:</span> {roleLabel}</p>
-              <p><span className="font-medium">Status:</span> {profile?.isActive ? "Active" : "Inactive"}</p>
-              <p><span className="font-medium">Created:</span> {profile?.createdAt ? new Date(profile.createdAt).toLocaleString() : "N/A"}</p>
-              <p><span className="font-medium">Last Updated:</span> {profile?.updatedAt ? new Date(profile.updatedAt).toLocaleString() : "N/A"}</p>
+              <p>
+                <span className="font-medium">User ID:</span>{" "}
+                {String(profile?._id || user?.id || "N/A")}
+              </p>
+              <p>
+                <span className="font-medium">Role:</span> {roleLabel}
+              </p>
+              <p>
+                <span className="font-medium">Status:</span>{" "}
+                {profile?.isActive ? "Active" : "Inactive"}
+              </p>
+              <p>
+                <span className="font-medium">Created:</span>{" "}
+                {profile?.createdAt
+                  ? new Date(profile.createdAt).toLocaleString()
+                  : "N/A"}
+              </p>
+              <p>
+                <span className="font-medium">Last Updated:</span>{" "}
+                {profile?.updatedAt
+                  ? new Date(profile.updatedAt).toLocaleString()
+                  : "N/A"}
+              </p>
             </div>
           </div>
         </section>

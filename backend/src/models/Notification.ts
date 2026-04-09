@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { maybeSendNotificationEmail } from '../utils/notifyEmail';
 
 export type NotificationType =
   | 'vendor_pending_review'
@@ -82,5 +83,27 @@ const NotificationSchema = new Schema<INotification>(
 
 NotificationSchema.index({ user: 1, createdAt: -1, _id: -1 });
 NotificationSchema.index({ user: 1, read: 1 });
+
+/** Only new docs — avoid emailing on read/status updates. */
+NotificationSchema.pre('save', function (next) {
+  if (this.isNew) {
+    (this as INotification & { $locals?: { __notifyEmail?: boolean } }).$locals =
+      (this as INotification & { $locals?: { __notifyEmail?: boolean } }).$locals || {};
+    (this as INotification & { $locals?: { __notifyEmail?: boolean } }).$locals!.__notifyEmail = true;
+  }
+  next();
+});
+
+NotificationSchema.post('save', function (doc) {
+  const locals = (doc as INotification & { $locals?: { __notifyEmail?: boolean } }).$locals;
+  if (!locals?.__notifyEmail) return;
+  void maybeSendNotificationEmail({
+    user: doc.user,
+    title: doc.title,
+    body: doc.body,
+    link: doc.link,
+    type: doc.type,
+  });
+});
 
 export default mongoose.model<INotification>('Notification', NotificationSchema);

@@ -7,10 +7,7 @@ import {
   deletePurchaseRequest,
   clearError,
 } from "@/redux/purchaseRequestSlice";
-import {
-  approveRequest,
-  rejectApprovalRequest,
-} from "@/redux/approvalSlice";
+import { approveRequest, rejectApprovalRequest } from "@/redux/approvalSlice";
 import axios from "axios";
 import { BID_API_END_POINT } from "@/utils/constant";
 import { Button } from "../ui/button";
@@ -33,6 +30,8 @@ const PurchaseRequestDetails = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const { user } = useSelector((store) => store.auth);
+  const canOpenVendorProfile =
+    user?.role === "admin" || user?.role === "staff";
   const {
     currentPurchaseRequest: purchaseRequest,
     loading,
@@ -92,9 +91,7 @@ const PurchaseRequestDetails = () => {
       return;
     }
     try {
-      await dispatch(
-        approveRequest({ approvalId, comments: "" }),
-      ).unwrap();
+      await dispatch(approveRequest({ approvalId, comments: "" })).unwrap();
       toast.success("Purchase request approved");
       dispatch(getPurchaseRequestById(id));
     } catch (err) {
@@ -221,9 +218,7 @@ const PurchaseRequestDetails = () => {
   }
 
   const detailIdMatches =
-    purchaseRequest &&
-    id &&
-    String(purchaseRequest._id) === String(id);
+    purchaseRequest && id && String(purchaseRequest._id) === String(id);
 
   if (error && !loading && !purchaseRequest) {
     return (
@@ -231,7 +226,9 @@ const PurchaseRequestDetails = () => {
         <div className="max-w-7xl mx-auto px-4">
           <div className="rounded-3xl border border-[#dbe7f7] bg-surface p-4 shadow-[0_12px_36px_rgba(11,31,77,0.08)] sm:p-5 lg:p-6">
             <div className="mx-auto max-w-md rounded-xl border border-rose-200 bg-rose-50/90 px-6 py-8 text-center">
-              <p className="text-sm font-medium text-rose-900">Could not load this purchase request</p>
+              <p className="text-sm font-medium text-rose-900">
+                Could not load this purchase request
+              </p>
               <p className="mt-2 text-sm text-rose-800/90">{String(error)}</p>
               <div className="mt-6 flex flex-wrap justify-center gap-2">
                 <Button
@@ -244,7 +241,11 @@ const PurchaseRequestDetails = () => {
                 >
                   Try again
                 </Button>
-                <Button asChild variant="default" className="bg-[#0b1f4d] hover:bg-[#0b1f4d]/90">
+                <Button
+                  asChild
+                  variant="default"
+                  className="bg-[#0b1f4d] hover:bg-[#0b1f4d]/90"
+                >
                   <Link to="/purchase-requests">Back to list</Link>
                 </Button>
               </div>
@@ -518,16 +519,11 @@ const PurchaseRequestDetails = () => {
                     <FileText className="h-5 w-5" />
                     Tender bids
                   </CardTitle>
-                  <p className="text-sm text-muted-foreground font-normal">
-                    Vendor quotations on the linked tender show here after this
-                    request is approved and a tender exists.
-                  </p>
                 </CardHeader>
                 <CardContent>
                   {!purchaseRequest.linkedTender ? (
                     <p className="text-gray-500 text-center py-6">
-                      No linked tender yet — typically after admin approval a
-                      tender is created. Until then, use the main Tenders page.
+                      No linked tender.
                     </p>
                   ) : loadingBids ? (
                     <p className="text-gray-500 text-center py-6">
@@ -540,7 +536,17 @@ const PurchaseRequestDetails = () => {
                           <div className="flex justify-between items-start">
                             <div>
                               <h4 className="font-medium">
-                                {bid.vendor?.name || "Vendor"}
+                                {canOpenVendorProfile &&
+                                bid.vendor?._id ? (
+                                  <Link
+                                    to={`/vendors/${bid.vendor._id}`}
+                                    className="text-teal-800 hover:underline"
+                                  >
+                                    {bid.vendor?.name || "Vendor"}
+                                  </Link>
+                                ) : (
+                                  bid.vendor?.name || "Vendor"
+                                )}
                               </h4>
                               <p className="text-sm text-gray-500">
                                 Bid ID: {bid._id}

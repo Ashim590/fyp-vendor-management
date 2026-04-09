@@ -117,6 +117,8 @@ const vendorSlice = createSlice({
   initialState: {
     vendors: [],
     currentVendor: null,
+    /** Last vendor id requested for detail view — ignores stale responses when navigating A→B quickly */
+    lastRequestedVendorDetailId: null,
     stats: null,
     loading: false,
     error: null,
@@ -132,6 +134,7 @@ const vendorSlice = createSlice({
     resetVendorState: (state) => {
       state.vendors = [];
       state.currentVendor = null;
+      state.lastRequestedVendorDetailId = null;
       state.stats = null;
       state.loading = false;
       state.error = null;
@@ -154,17 +157,29 @@ const vendorSlice = createSlice({
         state.error = action.payload;
       })
       // Get Vendor By ID
-      .addCase(getVendorById.pending, (state) => {
+      .addCase(getVendorById.pending, (state, action) => {
         state.loading = true;
         state.error = null;
+        state.lastRequestedVendorDetailId = action.meta.arg;
       })
       .addCase(getVendorById.fulfilled, (state, action) => {
         state.loading = false;
+        if (
+          String(state.lastRequestedVendorDetailId) !==
+          String(action.meta.arg)
+        ) {
+          return;
+        }
         state.currentVendor = action.payload.vendor;
       })
       .addCase(getVendorById.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.payload;
+        if (
+          String(state.lastRequestedVendorDetailId) ===
+          String(action.meta.arg)
+        ) {
+          state.error = action.payload;
+        }
       })
       // Update Vendor
       .addCase(updateVendor.pending, (state) => {

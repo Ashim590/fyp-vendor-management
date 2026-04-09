@@ -19,6 +19,8 @@ import {
 import { toast } from "sonner";
 import { Search, CheckCircle, XCircle, Eye, FileText } from "lucide-react";
 import { Link } from "react-router-dom";
+import { WORKSPACE_DATA_TABLE_CLASS } from "../layout/WorkspacePageLayout";
+import { cn } from "@/lib/utils";
 
 const Quotations = () => {
   const dispatch = useDispatch();
@@ -135,18 +137,27 @@ const Quotations = () => {
         </div>
 
         {/* Quotations Table */}
-        <div className="bg-white rounded-lg shadow">
-          <Table>
+        <Table className={cn(WORKSPACE_DATA_TABLE_CLASS, "table-fixed")}>
+            <colgroup>
+              <col className="w-[11%]" />
+              <col className="w-[24%]" />
+              <col className="w-[11%]" />
+              <col className="w-[9%]" />
+              <col className="w-[13%]" />
+              <col className="w-[11%]" />
+              <col className="w-[10%]" />
+              <col className="w-[11%]" />
+            </colgroup>
             <TableHeader>
-              <TableRow>
-                <TableHead>Quotation #</TableHead>
-                <TableHead>Vendor</TableHead>
-                <TableHead>PR Reference</TableHead>
-                <TableHead>Items</TableHead>
-                <TableHead>Total Amount</TableHead>
-                <TableHead>Delivery Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="text-left">Quotation #</TableHead>
+                <TableHead className="text-left">Vendor</TableHead>
+                <TableHead className="text-left">PR Reference</TableHead>
+                <TableHead className="text-left">Items</TableHead>
+                <TableHead className="text-left">Total Amount</TableHead>
+                <TableHead className="text-left">Delivery Date</TableHead>
+                <TableHead className="text-left">Status</TableHead>
+                <TableHead className="text-left">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -165,28 +176,32 @@ const Quotations = () => {
               ) : (
                 filteredQuotations.map((quotation) => (
                   <TableRow key={quotation._id}>
-                    <TableCell className="font-medium">
+                    <TableCell className="min-w-0 truncate font-medium tabular-nums">
                       {quotation.quotationNumber}
                     </TableCell>
-                    <TableCell>{quotation.vendorName}</TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-0">
+                      <span className="line-clamp-2 break-words">{quotation.vendorName}</span>
+                    </TableCell>
+                    <TableCell className="min-w-0 truncate whitespace-nowrap tabular-nums">
                       {quotation.purchaseRequest?.requestNumber || "N/A"}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-0 whitespace-nowrap">
                       <div className="flex items-center gap-1">
-                        <FileText className="h-4 w-4 text-gray-400" />
+                        <FileText className="h-4 w-4 shrink-0 text-gray-400" />
                         {quotation.itemsCount ??
                           quotation.items?.length ??
                           0}{" "}
                         items
                       </div>
                     </TableCell>
-                    <TableCell className="font-medium">
+                    <TableCell className="min-w-0 whitespace-nowrap font-medium tabular-nums">
                       {formatCurrency(quotation.totalAmount)}
                     </TableCell>
-                    <TableCell>{formatDate(quotation.deliveryDate)}</TableCell>
-                    <TableCell>{getStatusBadge(quotation.status)}</TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-0 whitespace-nowrap">
+                      {formatDate(quotation.deliveryDate)}
+                    </TableCell>
+                    <TableCell className="min-w-0">{getStatusBadge(quotation.status)}</TableCell>
+                    <TableCell className="min-w-0">
                       <div className="flex gap-2">
                         <Button variant="outline" size="sm">
                           <Eye className="h-4 w-4" />
@@ -218,7 +233,6 @@ const Quotations = () => {
               )}
             </TableBody>
           </Table>
-        </div>
       </div>
     </div>
   );

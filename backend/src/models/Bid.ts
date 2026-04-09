@@ -22,12 +22,15 @@ export interface IBid extends Document {
     editedAt: Date;
     editedBy: mongoose.Types.ObjectId;
     amount: number;
+    deliveryDaysOffer?: number;
     technicalProposal: string;
     financialProposal: string;
     documents?: Array<{ name: string; url: string; uploadedAt?: Date }>;
   }>;
   status: BidStatus;
   score?: number;
+  /** Calendar days from award to delivery (optional; powers comparison / “fastest” highlight). */
+  deliveryDaysOffer?: number;
   rejectionReason?: string;
 }
 
@@ -59,6 +62,7 @@ const BidSchema: Schema<IBid> = new Schema(
           editedAt: { type: Date, default: Date.now },
           editedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
           amount: { type: Number, required: true },
+          deliveryDaysOffer: { type: Number, min: 0 },
           technicalProposal: { type: String, default: '' },
           financialProposal: { type: String, default: '' },
           documents: {
@@ -81,6 +85,7 @@ const BidSchema: Schema<IBid> = new Schema(
       default: 'SUBMITTED'
     },
     score: { type: Number },
+    deliveryDaysOffer: { type: Number, min: 0 },
     rejectionReason: { type: String, trim: true }
   },
   { timestamps: true }

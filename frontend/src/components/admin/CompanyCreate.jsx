@@ -28,8 +28,8 @@ const CompanyCreate = () => {
                 const companyId = res?.data?.company?._id;
                 navigate(`/admin/companies/${companyId}`);
             }
-        } catch (error) {
-            console.log(error);
+        } catch {
+            /* ignore */
         }
     }
     return (

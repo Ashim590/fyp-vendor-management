@@ -62,6 +62,14 @@ function parseOptionalAmount(raw: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+/** Optional non-negative delivery lead time in days (quotation comparison). */
+function parseOptionalDeliveryDays(raw: unknown): number | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return Math.min(Math.round(n), 3650);
+}
+
 function roundMoney2(n: number): number {
   return Math.round(n * 100) / 100;
 }
@@ -116,6 +124,9 @@ router.post(
       );
       const vatRateVal = parseOptionalAmount(
         (req.body as Record<string, unknown>).vatRate,
+      );
+      const deliveryDaysOffer = parseOptionalDeliveryDays(
+        (req.body as Record<string, unknown>).deliveryDaysOffer,
       );
 
       let grand = roundMoney2(amountNum);
@@ -230,6 +241,7 @@ router.post(
           editedAt: new Date(),
           editedBy: req.user!._id as any,
           amount: Number(existing.amount || 0),
+          deliveryDaysOffer: existing.deliveryDaysOffer,
           technicalProposal: String(existing.technicalProposal || ""),
           financialProposal: String(existing.financialProposal || ""),
           documents: (existing.documents || []).map((d) => ({
@@ -239,6 +251,9 @@ router.post(
           })),
         } as any);
         existing.amount = grand;
+        if (deliveryDaysOffer !== undefined) {
+          existing.deliveryDaysOffer = deliveryDaysOffer;
+        }
         existing.amountExcludingVat = excl;
         existing.vatAmount = vatAmt;
         existing.vatRate = vatRateVal;
@@ -260,6 +275,7 @@ router.post(
           technicalProposal: proposalText,
           financialProposal: String(financialProposal || "").trim(),
           documents: mergedDocuments,
+          deliveryDaysOffer,
           status: "SUBMITTED",
           isDraft: false,
           submittedAt: new Date(),
@@ -357,6 +373,9 @@ router.post(
       const vatRateDraft = parseOptionalAmount(
         (req.body as Record<string, unknown>).vatRate,
       );
+      const deliveryDaysDraft = parseOptionalDeliveryDays(
+        (req.body as Record<string, unknown>).deliveryDaysOffer,
+      );
 
       let resolvedGrand: number | undefined;
       if (amount !== undefined && String(amount).trim() !== "") {
@@ -437,6 +456,7 @@ router.post(
           editedAt: new Date(),
           editedBy: req.user!._id as any,
           amount: Number(existing.amount || 0),
+          deliveryDaysOffer: existing.deliveryDaysOffer,
           technicalProposal: String(existing.technicalProposal || ""),
           financialProposal: String(existing.financialProposal || ""),
           documents: (existing.documents || []).map((d) => ({
@@ -450,6 +470,9 @@ router.post(
           existing.amountExcludingVat = exclDraft;
           existing.vatAmount = vatAmtDraft;
           existing.vatRate = vatRateDraft;
+        }
+        if (deliveryDaysDraft !== undefined) {
+          existing.deliveryDaysOffer = deliveryDaysDraft;
         }
         existing.technicalProposal = proposalText || String(existing.technicalProposal || "");
         existing.financialProposal = String(
@@ -471,6 +494,7 @@ router.post(
           technicalProposal: proposalText,
           financialProposal: String(financialProposal || "").trim(),
           documents: uploadedDocuments,
+          deliveryDaysOffer: deliveryDaysDraft,
           status: "SUBMITTED",
           isDraft: true,
         });
@@ -500,7 +524,7 @@ router.get(
         vendor: req.user.vendorProfile,
       })
         .select(
-          "tender vendor amount amountExcludingVat vatAmount vatRate technicalProposal financialProposal documents status isDraft versionHistory updatedAt submittedAt",
+          "tender vendor amount amountExcludingVat vatAmount vatRate deliveryDaysOffer technicalProposal financialProposal documents status isDraft versionHistory updatedAt submittedAt",
         )
         .lean();
       if (!bid || !bid.isDraft) {
@@ -652,7 +676,7 @@ router.get(
         .sort({ amount: 1, createdAt: -1 })
         .limit(150)
         .select(
-          "tender vendor amount amountExcludingVat vatAmount vatRate status score technicalProposal financialProposal documents createdAt updatedAt rejectionReason",
+          "tender vendor amount amountExcludingVat vatAmount vatRate deliveryDaysOffer status score technicalProposal financialProposal documents createdAt updatedAt rejectionReason",
         )
         .lean();
 
@@ -768,14 +792,63 @@ router.patch(
         });
       }
 
-      await Bid.updateMany(
-        {
-          tender: tenderDoc._id,
-          status: "ACCEPTED",
-          _id: { $ne: bid._id },
-        },
-        { $set: { status: "UNDER_REVIEW" } },
-      );
+      const AUTO_REJECT_REASON =
+        "Another quotation was selected as the preferred offer.";
+
+      /** All competing quotations that are still in play become rejected when one is selected. */
+      const otherActive = await Bid.find({
+        tender: tenderDoc._id,
+        _id: { $ne: bid._id },
+        status: { $in: ["SUBMITTED", "UNDER_REVIEW", "ACCEPTED"] },
+      }).lean();
+
+      if (otherActive.length > 0) {
+        await Bid.updateMany(
+          {
+            tender: tenderDoc._id,
+            _id: { $ne: bid._id },
+            status: { $in: ["SUBMITTED", "UNDER_REVIEW", "ACCEPTED"] },
+          },
+          {
+            $set: {
+              status: "REJECTED",
+              rejectionReason: AUTO_REJECT_REASON,
+            },
+          },
+        );
+
+        for (const ob of otherActive) {
+          const vendorUser = await User.findOne({
+            vendorProfile: new mongoose.Types.ObjectId(refId(ob.vendor)),
+          });
+          if (vendorUser) {
+            await Notification.create({
+              user: vendorUser._id,
+              title: "Quotation not selected",
+              body: `Your quotation for "${tenderDoc.title}" was not selected. ${AUTO_REJECT_REASON}`,
+              link: `/my-bids`,
+              type: "bid_rejected",
+            });
+          }
+        }
+
+        await createAudit({
+          req,
+          action: "reject",
+          entityType: "tender",
+          entityId: tenderDoc._id,
+          entityName: tenderDoc.title || String(tenderDoc._id),
+          description: `Auto-rejected ${otherActive.length} quotation(s) after selecting a preferred offer`,
+          module: "bids",
+          subModule: "accept_auto_reject",
+          status: "success",
+          details: {
+            tenderId: tenderDoc._id,
+            selectedBidId: bid._id,
+            rejectedBidIds: otherActive.map((b) => b._id),
+          },
+        });
+      }
 
       bid.status = "ACCEPTED";
       if (bid.rejectionReason) bid.rejectionReason = "";

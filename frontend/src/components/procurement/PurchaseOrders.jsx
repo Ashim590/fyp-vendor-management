@@ -14,9 +14,15 @@ import {
 } from "../ui/table";
 import { toast } from "sonner";
 import { Search, Eye, FileText, Truck } from "lucide-react";
+import { Link } from "react-router-dom";
+import { WORKSPACE_DATA_TABLE_CLASS } from "../layout/WorkspacePageLayout";
+import { cn } from "@/lib/utils";
 
 const PurchaseOrders = () => {
   const dispatch = useDispatch();
+  const { user } = useSelector((store) => store.auth);
+  const canOpenVendorProfile =
+    user?.role === "admin" || user?.role === "staff";
   const { purchaseOrders, loading, error } = useSelector(
     (store) => store.purchaseOrder
   );
@@ -106,18 +112,27 @@ const PurchaseOrders = () => {
         </div>
 
         {/* Purchase Orders Table */}
-        <div className="bg-white rounded-lg shadow">
-          <Table>
+        <Table className={cn(WORKSPACE_DATA_TABLE_CLASS, "table-fixed")}>
+            <colgroup>
+              <col className="w-[11%]" />
+              <col className="w-[24%]" />
+              <col className="w-[11%]" />
+              <col className="w-[9%]" />
+              <col className="w-[13%]" />
+              <col className="w-[11%]" />
+              <col className="w-[10%]" />
+              <col className="w-[11%]" />
+            </colgroup>
             <TableHeader>
-              <TableRow>
-                <TableHead>PO Number</TableHead>
-                <TableHead>Vendor</TableHead>
-                <TableHead>PR Reference</TableHead>
-                <TableHead>Items</TableHead>
-                <TableHead>Total Amount</TableHead>
-                <TableHead>Delivery Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="text-left">PO Number</TableHead>
+                <TableHead className="text-left">Vendor</TableHead>
+                <TableHead className="text-left">PR Reference</TableHead>
+                <TableHead className="text-left">Items</TableHead>
+                <TableHead className="text-left">Total Amount</TableHead>
+                <TableHead className="text-left">Delivery Date</TableHead>
+                <TableHead className="text-left">Status</TableHead>
+                <TableHead className="text-left">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -136,25 +151,38 @@ const PurchaseOrders = () => {
               ) : (
                 filteredOrders.map((order) => (
                   <TableRow key={order._id}>
-                    <TableCell className="font-medium">
+                    <TableCell className="min-w-0 truncate font-medium tabular-nums">
                       {order.orderNumber}
                     </TableCell>
-                    <TableCell>{order.vendorName}</TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-0">
+                      {canOpenVendorProfile && order.vendor ? (
+                        <Link
+                          to={`/vendors/${order.vendor}`}
+                          className="line-clamp-2 break-words font-medium text-teal-800 hover:underline"
+                        >
+                          {order.vendorName || "—"}
+                        </Link>
+                      ) : (
+                        <span className="line-clamp-2 break-words">{order.vendorName || "—"}</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="min-w-0 truncate whitespace-nowrap tabular-nums">
                       {order.purchaseRequest?.requestNumber || "N/A"}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-0 whitespace-nowrap">
                       <div className="flex items-center gap-1">
-                        <FileText className="h-4 w-4 text-gray-400" />
+                        <FileText className="h-4 w-4 shrink-0 text-gray-400" />
                         {order.itemsCount ?? order.items?.length ?? 0} items
                       </div>
                     </TableCell>
-                    <TableCell className="font-medium">
+                    <TableCell className="min-w-0 whitespace-nowrap font-medium tabular-nums">
                       {formatCurrency(order.totalAmount)}
                     </TableCell>
-                    <TableCell>{formatDate(order.deliveryDate)}</TableCell>
-                    <TableCell>{getStatusBadge(order.status)}</TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-0 whitespace-nowrap">
+                      {formatDate(order.deliveryDate)}
+                    </TableCell>
+                    <TableCell className="min-w-0">{getStatusBadge(order.status)}</TableCell>
+                    <TableCell className="min-w-0">
                       <div className="flex gap-2">
                         <Button variant="outline" size="sm">
                           <Eye className="h-4 w-4" />
@@ -169,7 +197,6 @@ const PurchaseOrders = () => {
               )}
             </TableBody>
           </Table>
-        </div>
       </div>
     </div>
   );

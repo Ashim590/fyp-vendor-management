@@ -513,6 +513,7 @@ async function tenderEsewaCallbackHandler(
     payment.paymentDate = isSuccess ? new Date() : payment.paymentDate;
     payment.status = isSuccess ? "Completed" : "Failed";
     await payment.save();
+    invalidateStaffSummaryCache();
 
     if (isSuccess) {
       await ensureDeliveryForTenderPayment(payment).catch((e) =>

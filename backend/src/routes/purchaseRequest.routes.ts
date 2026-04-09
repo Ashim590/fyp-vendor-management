@@ -80,6 +80,60 @@ async function notifyPrSubmitted(pr: any, actorUserId: any): Promise<void> {
   );
 }
 
+type ResolvedApprover = {
+  assignee: IUser;
+  approverRole: "ADMIN" | "PROCUREMENT_OFFICER";
+};
+
+/** Shared by `/:id/submit`, `POST /create` + `PUT /:id` when `submitForApproval` is true. */
+async function finalizePurchaseRequestSubmission(
+  pr: InstanceType<typeof PurchaseRequest>,
+  actorUserId: mongoose.Types.ObjectId,
+  resolved: ResolvedApprover,
+) {
+  const { assignee, approverRole } = resolved;
+
+  pr.status = "pending_approval";
+  await pr.save();
+
+  const requesterDoc = await User.findById(pr.requester);
+
+  const existingApproval = await Approval.findOne({
+    purchaseRequest: pr._id,
+    status: "pending",
+  });
+  if (existingApproval) {
+    await notifyPrSubmitted(pr, actorUserId);
+    return { approval: existingApproval.toObject() };
+  }
+
+  const approval = new Approval({
+    entityType: "purchase_request",
+    entityId: pr._id,
+    purchaseRequest: pr._id,
+    requester: pr.requester,
+    requesterName: requesterDoc?.name ?? "Unknown",
+    requesterDepartment: pr.department,
+    title: pr.title,
+    description: pr.description,
+    amount: pr.totalEstimatedAmount,
+    currency: "NPR",
+    priority: pr.priority,
+    approverRole,
+    currentApprover: assignee._id,
+    status: "pending",
+  });
+  await approval.save();
+
+  await notifyPrSubmitted(pr, actorUserId);
+
+  return { approval: approval.toObject() };
+}
+
+function wantsSubmitFlag(raw: unknown): boolean {
+  return raw === true || raw === "true" || raw === 1 || raw === "1";
+}
+
 // Create purchase request
 router.post(
   "/create",
@@ -97,6 +151,7 @@ router.post(
       priority,
       notes,
       status,
+      submitForApproval,
     } = req.body || {};
 
     const pr = new PurchaseRequest({
@@ -114,6 +169,24 @@ router.post(
     });
 
     await pr.save();
+
+    let approval: object | undefined;
+    if (wantsSubmitFlag(submitForApproval)) {
+      const resolved = await resolveApprovalAssignee(pr.requester);
+      if ("error" in resolved) {
+        return res.status(400).json({
+          success: false,
+          message: resolved.error,
+        });
+      }
+      const out = await finalizePurchaseRequestSubmission(
+        pr,
+        req.user!._id,
+        resolved,
+      );
+      approval = out.approval;
+    }
+
     const requesterDoc = await User.findById(pr.requester);
     return res.status(201).json({
       success: true,
@@ -121,6 +194,7 @@ router.post(
         ...pr.toObject(),
         requester: shapeRequester(requesterDoc),
       },
+      ...(approval ? { approval } : {}),
     });
   },
 );
@@ -395,6 +469,7 @@ router.put(
       priority,
       notes,
       status,
+      submitForApproval,
     } = req.body || {};
 
     pr.title = title ?? pr.title;
@@ -422,6 +497,24 @@ router.put(
         },
       );
     }
+
+    let approval: object | undefined;
+    if (wantsSubmitFlag(submitForApproval)) {
+      const resolved = await resolveApprovalAssignee(pr.requester);
+      if ("error" in resolved) {
+        return res.status(400).json({
+          success: false,
+          message: resolved.error,
+        });
+      }
+      const out = await finalizePurchaseRequestSubmission(
+        pr,
+        req.user!._id,
+        resolved,
+      );
+      approval = out.approval;
+    }
+
     const requesterDoc = await User.findById(pr.requester);
     return res.json({
       success: true,
@@ -429,6 +522,7 @@ router.put(
         ...pr.toObject(),
         requester: shapeRequester(requesterDoc),
       },
+      ...(approval ? { approval } : {}),
     });
   },
 );
@@ -451,51 +545,17 @@ router.put(
     if ("error" in resolved) {
       return res.status(400).json({ message: resolved.error });
     }
-    const { assignee, approverRole } = resolved;
 
-    pr.status = "pending_approval";
-    await pr.save();
-
-    // Create approval record (pending) so Approvals page can load it.
-    const requesterDoc = await User.findById(pr.requester);
-
-    const existingApproval = await Approval.findOne({
-      purchaseRequest: pr._id,
-      status: "pending",
-    });
-    if (existingApproval) {
-      await notifyPrSubmitted(pr, req.user!._id);
-      return res.json({
-        success: true,
-        purchaseRequest: pr.toObject(),
-        approval: existingApproval.toObject(),
-      });
-    }
-
-    const approval = new Approval({
-      entityType: "purchase_request",
-      entityId: pr._id,
-      purchaseRequest: pr._id,
-      requester: pr.requester,
-      requesterName: requesterDoc?.name ?? "Unknown",
-      requesterDepartment: pr.department,
-      title: pr.title,
-      description: pr.description,
-      amount: pr.totalEstimatedAmount,
-      currency: "NPR",
-      priority: pr.priority,
-      approverRole,
-      currentApprover: assignee._id,
-      status: "pending",
-    });
-    await approval.save();
-
-    await notifyPrSubmitted(pr, req.user!._id);
+    const { approval } = await finalizePurchaseRequestSubmission(
+      pr,
+      req.user!._id,
+      resolved,
+    );
 
     return res.json({
       success: true,
       purchaseRequest: pr.toObject(),
-      approval: approval.toObject(),
+      approval,
     });
   },
 );

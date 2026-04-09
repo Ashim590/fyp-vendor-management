@@ -1,8 +1,7 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useSelector } from "react-redux";
 import { Link, useSearchParams } from "react-router-dom";
 import axios from "axios";
-import { getAllInvoices } from "@/redux/invoiceSlice";
 import { PAYMENT_API_END_POINT } from "@/utils/constant";
 import { getAuthHeaderFromStorage } from "@/utils/authHeader";
 import { Button } from "../ui/button";
@@ -10,21 +9,31 @@ import { Badge } from "../ui/badge";
 import {
   WorkspacePageLayout,
   WorkspacePageHeader,
-  WorkspaceToolbar,
-  WORKSPACE_SELECT_CLASS,
+  WorkspaceSegmentedControl,
+  WORKSPACE_DATA_TABLE_CLASS,
 } from "../layout/WorkspacePageLayout";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
 import { EsewaPaymentForm } from "@/components/payment/EsewaPaymentForm";
 import { toast } from "sonner";
 import { Loader2, ExternalLink } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export default function ProcurementPayments() {
-  const dispatch = useDispatch();
   const { user } = useSelector((store) => store.auth);
   const isStaff = user?.role === "staff";
   const [searchParams, setSearchParams] = useSearchParams();
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(
+    /** @type {"all" | "pending" | "completed" | "failed"} */ ("all"),
+  );
   const [checkout, setCheckout] = useState(null);
 
   const formatDate = (value) => {
@@ -41,14 +50,10 @@ export default function ProcurementPayments() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {
-        limit: 80,
-        ...(statusFilter === "all" ? {} : { status: statusFilter }),
-      };
       const { data } = await axios.get(`${PAYMENT_API_END_POINT}`, {
         withCredentials: true,
         headers: getAuthHeaderFromStorage(),
-        params,
+        params: { limit: 200 },
       });
       setPayments(data.payments || []);
     } catch {
@@ -57,7 +62,27 @@ export default function ProcurementPayments() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, []);
+
+  const paymentFilterCounts = useMemo(() => {
+    const pending = payments.filter((p) => p.status === "Pending").length;
+    const completed = payments.filter((p) => p.status === "Completed").length;
+    const failed = payments.filter((p) => p.status === "Failed").length;
+    return { all: payments.length, pending, completed, failed };
+  }, [payments]);
+
+  const filteredPayments = useMemo(() => {
+    if (statusFilter === "pending") {
+      return payments.filter((p) => p.status === "Pending");
+    }
+    if (statusFilter === "completed") {
+      return payments.filter((p) => p.status === "Completed");
+    }
+    if (statusFilter === "failed") {
+      return payments.filter((p) => p.status === "Failed");
+    }
+    return payments;
+  }, [payments, statusFilter]);
 
   useEffect(() => {
     load();
@@ -84,7 +109,7 @@ export default function ProcurementPayments() {
       searchParams.delete("transactionUuid");
       setSearchParams(searchParams, { replace: true });
     }
-  }, [searchParams, setSearchParams, load, dispatch]);
+  }, [searchParams, setSearchParams, load]);
 
   const startEsewa = async (paymentId) => {
     try {
@@ -149,126 +174,165 @@ export default function ProcurementPayments() {
         />
       )}
 
-      <WorkspaceToolbar>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className={WORKSPACE_SELECT_CLASS}
-          aria-label="Filter by status"
-        >
-          <option value="all">All statuses</option>
-          <option value="Pending">Pending</option>
-          <option value="Completed">Completed</option>
-          <option value="Failed">Failed</option>
-        </select>
-      </WorkspaceToolbar>
+      {!loading ? (
+        <div className="mb-4 space-y-3">
+          <WorkspaceSegmentedControl
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { value: "all", label: `All (${paymentFilterCounts.all})` },
+              {
+                value: "pending",
+                label: `Pending (${paymentFilterCounts.pending})`,
+              },
+              {
+                value: "completed",
+                label: `Completed (${paymentFilterCounts.completed})`,
+              },
+              {
+                value: "failed",
+                label: `Failed (${paymentFilterCounts.failed})`,
+              },
+            ]}
+            className="w-full max-w-3xl flex-wrap sm:flex-nowrap"
+          />
+          {payments.length > 0 && filteredPayments.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-8 text-center text-sm font-medium text-slate-600">
+              No payments match this filter. Try{" "}
+              <button
+                type="button"
+                className="font-semibold text-teal-800 underline-offset-2 hover:underline"
+                onClick={() => setStatusFilter("all")}
+              >
+                All
+              </button>
+              .
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-            <tr>
-              <th className="px-4 py-3 text-center w-12">S/N</th>
-              <th className="px-2 py-3">Payment #</th>
-              <th className="px-4 py-3">Vendor Reg #</th>
-              <th className="px-4 py-3">Tender</th>
-              <th className="px-4 py-3">Vendor</th>
-              <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3 text-right">Amount (NPR)</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td
-                  colSpan={9}
-                  className="px-4 py-12 text-center text-slate-500"
+      <Table
+        className={cn(
+          WORKSPACE_DATA_TABLE_CLASS,
+          "table-fixed",
+        )}
+      >
+        <colgroup>
+          <col className="w-[3%]" />
+          <col className="w-[10%]" />
+          <col className="w-[9%]" />
+          <col className="w-[21%]" />
+          <col className="w-[17%]" />
+          <col className="w-[10%]" />
+          <col className="w-[9%]" />
+          <col className="w-[8%]" />
+          <col className="w-[13%]" />
+        </colgroup>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="text-center">S/N</TableHead>
+            <TableHead className="text-left">Payment #</TableHead>
+            <TableHead className="text-left">Vendor Reg #</TableHead>
+            <TableHead className="text-left">Tender</TableHead>
+            <TableHead className="text-left">Vendor</TableHead>
+            <TableHead className="text-left">Date</TableHead>
+            <TableHead className="text-right">Amount (NPR)</TableHead>
+            <TableHead className="text-left">Status</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {loading ? (
+            <TableRow>
+              <TableCell colSpan={9} className="py-12 text-center text-slate-500">
+                <Loader2 className="inline h-5 w-5 animate-spin text-teal-600" />
+              </TableCell>
+            </TableRow>
+          ) : payments.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={9} className="py-10 text-center text-slate-600">
+                <p>No tender payments yet.</p>
+                <p className="mt-2 text-sm text-slate-500">
+                  Accept a quotation on a tender — a payment row is created
+                  automatically. You can also add one manually from tender
+                  detail if needed.
+                </p>
+                <Button className="mt-4" asChild>
+                  <Link to="/tenders">Go to tenders</Link>
+                </Button>
+              </TableCell>
+            </TableRow>
+          ) : (
+            filteredPayments.map((p, index) => (
+              <TableRow key={p._id}>
+                <TableCell className="min-w-0 text-center text-xs text-slate-500">
+                  {index + 1}
+                </TableCell>
+                <TableCell
+                  className="min-w-0 truncate font-semibold tabular-nums tracking-tight text-slate-900 [text-decoration-line:none]"
+                  title={p.paymentNumber}
                 >
-                  <Loader2 className="inline h-5 w-5 animate-spin text-teal-600" />
-                </td>
-              </tr>
-            ) : payments.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={9}
-                  className="px-4 py-10 text-center text-slate-600"
-                >
-                  <p>No tender payments yet.</p>
-                  <p className="mt-2 text-sm text-slate-500">
-                    Accept a quotation on a tender — a payment row is created
-                    automatically. You can also add one manually from tender
-                    detail if needed.
-                  </p>
-                  <Button className="mt-4" asChild>
-                    <Link to="/tenders">Go to tenders</Link>
-                  </Button>
-                </td>
-              </tr>
-            ) : (
-              payments.map((p, index) => (
-                <tr key={p._id} className="border-t border-slate-100">
-                  <td className="px-4 py-3 text-center text-xs text-slate-500">
-                    {index + 1}
-                  </td>
-                  <td className="px-2 py-3 font-mono text-xs">
-                    {p.paymentNumber}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-700">
-                    {p.vendorRegistrationNumber || "—"}
-                  </td>
-                  <td className="px-4 py-3 max-w-[200px]">
-                    <span className="line-clamp-2">
-                      {p.tender?.title || p.tenderReference || "—"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
+                  {p.paymentNumber}
+                </TableCell>
+                <TableCell className="min-w-0 break-all font-mono text-xs text-slate-700">
+                  {p.vendorRegistrationNumber || "—"}
+                </TableCell>
+                <TableCell className="min-w-0">
+                  <span className="line-clamp-2 break-words leading-snug">
+                    {p.tender?.title || p.tenderReference || "—"}
+                  </span>
+                </TableCell>
+                <TableCell className="min-w-0 text-slate-800">
+                  <span className="line-clamp-2 break-words leading-snug">
                     {p.vendor?.name || p.vendorName || "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    {formatDate(p.paymentDate || p.createdAt)}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums">
-                    {Number(p.amount || 0).toLocaleString("en-NP")}
-                  </td>
-                  <td className="px-4 py-3">{statusBadge(p.status)}</td>
-                  <td className="px-4 py-3 text-right align-middle">
-                    <div className="inline-flex items-center justify-end gap-2">
-                      <div className="flex min-w-[168px] justify-end">
-                        {isStaff && p.status === "Pending" ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="bg-emerald-600 hover:bg-emerald-700"
-                            onClick={() => startEsewa(p._id)}
-                          >
-                            Open eSewa checkout
-                          </Button>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </div>
-                      <div className="flex min-w-[92px] justify-end">
-                        {p.tender?._id ? (
-                          <Link
-                            to={`/tenders/${p.tender._id}`}
-                            className="inline-flex items-center gap-1 text-sm font-medium text-teal-700 hover:underline"
-                          >
-                            Open tender
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </Link>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+                  </span>
+                </TableCell>
+                <TableCell className="min-w-0 whitespace-nowrap text-slate-700">
+                  {formatDate(p.paymentDate || p.createdAt)}
+                </TableCell>
+                <TableCell className="min-w-0 text-right tabular-nums font-medium text-slate-900">
+                  {Number(p.amount || 0).toLocaleString("en-NP")}
+                </TableCell>
+                <TableCell className="min-w-0">{statusBadge(p.status)}</TableCell>
+                <TableCell className="min-w-0 text-right align-middle">
+                  <div className="flex flex-wrap items-center justify-end gap-1.5">
+                    {isStaff && p.status === "Pending" ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-8 shrink-0 bg-emerald-600 px-2.5 text-xs hover:bg-emerald-700"
+                        title="Open eSewa checkout"
+                        onClick={() => startEsewa(p._id)}
+                      >
+                        eSewa
+                      </Button>
+                    ) : null}
+                    {p.tender?._id ? (
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 shrink-0"
+                        asChild
+                      >
+                        <Link
+                          to={`/tenders/${p.tender._id}`}
+                          title="Open tender"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                          <span className="sr-only">Open tender</span>
+                        </Link>
+                      </Button>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
     </WorkspacePageLayout>
   );
 }

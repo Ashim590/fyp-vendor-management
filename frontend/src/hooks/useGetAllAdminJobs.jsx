@@ -13,8 +13,8 @@ const useGetAllAdminJobs = () => {
                 if(res.data.success){
                     dispatch(setAllAdminJobs(res.data.jobs));
                 }
-            } catch (error) {
-                console.log(error);
+            } catch {
+                /* ignore */
             }
         }
         fetchAllAdminJobs();

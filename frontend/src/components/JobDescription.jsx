@@ -30,8 +30,7 @@ const JobDescription = () => {
 
             }
         } catch (error) {
-            console.log(error);
-            toast.error(error.response.data.message);
+            toast.error(error?.response?.data?.message || "Could not submit application.");
         }
     }
 
@@ -43,8 +42,8 @@ const JobDescription = () => {
                     dispatch(setSingleJob(res.data.job));
                     setIsApplied(res.data.job.applications.some(application=>application.applicant === user?._id)) // Ensure the state is in sync with fetched data
                 }
-            } catch (error) {
-                console.log(error);
+            } catch {
+                /* ignore */
             }
         }
         fetchSingleJob(); 

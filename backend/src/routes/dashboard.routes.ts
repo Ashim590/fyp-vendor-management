@@ -2,7 +2,6 @@ import { Router } from 'express';
 import Tender from '../models/Tender';
 import Bid from '../models/Bid';
 import Payment from '../models/Payment';
-import Quotation from '../models/Quotation';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { vendorMayAccessMarketplace } from '../utils/vendorGate';
 import { resolveStaffDashboardForApi } from '../utils/staffDashboardData';
@@ -44,7 +43,6 @@ router.get('/summary', authenticate, async (req: AuthRequest, res) => {
         kind: 'vendor',
         openTenders: 0,
         myBidsCount: 0,
-        myQuotationsCount: 0,
         totalRevenue: 0,
         recentBids: [] as unknown[],
       };
@@ -73,11 +71,9 @@ router.get('/summary', authenticate, async (req: AuthRequest, res) => {
 
       const vidRef = vendorProfile;
 
-      const [openTenders, myBidsCount, myQuotationsCount, revRow, recentBids] =
-        await Promise.all([
+      const [openTenders, myBidsCount, revRow, recentBids] = await Promise.all([
           Tender.countDocuments({ status: 'PUBLISHED' }),
           Bid.countDocuments({ vendor: vidRef }),
-          Quotation.countDocuments({ vendor: vidRef }),
           Payment.aggregate([
             { $match: { vendor: vidRef, status: 'Completed' } },
             { $group: { _id: null, sum: { $sum: '$amount' } } },
@@ -97,7 +93,8 @@ router.get('/summary', authenticate, async (req: AuthRequest, res) => {
         kind: 'vendor',
         openTenders,
         myBidsCount,
-        myQuotationsCount,
+        /** Same as tender bids; kept for older clients that read this field. */
+        myQuotationsCount: myBidsCount,
         totalRevenue,
         recentBids,
       };

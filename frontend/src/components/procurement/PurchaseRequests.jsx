@@ -4,7 +4,6 @@ import {
   createPurchaseRequest,
   getPurchaseRequestById,
   updatePurchaseRequest,
-  submitForApproval,
 } from "@/redux/purchaseRequestSlice";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -176,25 +175,19 @@ const PurchaseRequests = () => {
 
     setLoading(true);
     try {
-      // Always create PR first, then call submit endpoint so approval + notifications run.
+      // One request when submitting for approval (avoids double network + Mongo round-trips).
       const payload = {
         ...formData,
         items: validItems,
-        status: status === "draft" ? "draft" : "draft",
+        status: "draft",
+        submitForApproval: status === "pending_approval",
       };
       if (isEditMode && editId) {
         await dispatch(
-          updatePurchaseRequest({ requestId: editId, formData: payload })
+          updatePurchaseRequest({ requestId: editId, formData: payload }),
         ).unwrap();
-        if (status === "pending_approval") {
-          await dispatch(submitForApproval(editId)).unwrap();
-        }
       } else {
-        const created = await dispatch(createPurchaseRequest(payload)).unwrap();
-        const createdId = created?.purchaseRequest?._id;
-        if (status === "pending_approval" && createdId) {
-          await dispatch(submitForApproval(createdId)).unwrap();
-        }
+        await dispatch(createPurchaseRequest(payload)).unwrap();
       }
       toast.success(
         `Purchase request ${

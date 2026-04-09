@@ -1,5 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { motion } from "framer-motion";
 import { useSelector } from "react-redux";
 import axios from "axios";
 import { DASHBOARD_API_END_POINT } from "@/utils/constant";
@@ -18,7 +19,39 @@ import {
   Truck,
   AlertTriangle,
   Banknote,
+  ClipboardCheck,
+  CalendarClock,
+  Scale,
+  Award,
 } from "lucide-react";
+
+const MotionLink = motion(Link);
+
+const procurementSectionVariants = {
+  hidden: { opacity: 0, y: 22 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
+  },
+};
+
+const widgetGridVariants = {
+  hidden: {},
+  visible: {
+    transition: { staggerChildren: 0.09, delayChildren: 0.08 },
+  },
+};
+
+const widgetCardVariants = {
+  hidden: { opacity: 0, y: 18, scale: 0.97 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { type: "spring", stiffness: 420, damping: 32 },
+  },
+};
 
 export const AdminDashboard = () => {
   const { user } = useSelector((store) => store.auth);
@@ -47,25 +80,26 @@ export const AdminDashboard = () => {
   const modules = [
     {
       name: "Users",
-      desc: "Control system users",
       icon: Users,
       link: "/admin/users",
     },
     {
       name: "Vendor Approvals",
-      desc: "Approve and verify vendors",
       icon: Package,
       link: "/admin",
     },
     {
+      name: "Vendor directory",
+      icon: Building2,
+      link: "/vendors",
+    },
+    {
       name: "Tenders",
-      desc: "Monitor tender lifecycle",
       icon: Gavel,
       link: "/tenders",
     },
     {
       name: "Bids",
-      desc: "Monitor tender bids",
       icon: ClipboardList,
       link: "/bids-monitor",
     },
@@ -120,9 +154,6 @@ export const AdminDashboard = () => {
             <p className="mt-1 text-base text-slate-600">
               Welcome back, {user?.name || user?.fullname}
             </p>
-            <p className="mt-1 text-sm text-slate-500">
-              System overview and management controls
-            </p>
           </div>
         </div>
 
@@ -172,7 +203,6 @@ export const AdminDashboard = () => {
                       <h3 className="font-medium text-slate-800 transition group-hover:text-slate-900">
                         {module.name}
                       </h3>
-                      <p className="text-sm text-slate-500">{module.desc}</p>
                     </div>
                   </Link>
                 ))}
@@ -221,13 +251,67 @@ export const StaffDashboard = () => {
   const [activeOrders, setActiveOrders] = React.useState(0);
   const [delayedDeliveries, setDelayedDeliveries] = React.useState(0);
   const [onTimeRate, setOnTimeRate] = React.useState(0);
+  const [pendingApprovals, setPendingApprovals] = React.useState(0);
+  const [deliveriesDueToday, setDeliveriesDueToday] = React.useState(0);
+  const [monthlySpendNpr, setMonthlySpendNpr] = React.useState(0);
+  const [monthlyBudgetNpr, setMonthlyBudgetNpr] = React.useState(null);
+  const [monthlyBudgetConfigured, setMonthlyBudgetConfigured] =
+    React.useState(false);
+  const [budgetUtilizationPercent, setBudgetUtilizationPercent] =
+    React.useState(null);
+  const [topVendors, setTopVendors] = React.useState([]);
+  const [dashboardAsOf, setDashboardAsOf] = React.useState("");
+
+  const formatNpr = (n) =>
+    `NPR ${Number(n || 0).toLocaleString("en-NP", {
+      maximumFractionDigits: 2,
+    })}`;
 
   const applyStaffDashboard = React.useCallback((data) => {
     setActiveTenders(data.activeTenders ?? 0);
     setActiveOrders(data.activeOrders ?? 0);
     setDelayedDeliveries(data.delayedDeliveries ?? 0);
     setOnTimeRate(data.onTimeRate ?? 0);
+    setPendingApprovals(data.pendingApprovals ?? 0);
+    setDeliveriesDueToday(data.deliveriesDueToday ?? 0);
+    setMonthlySpendNpr(Number(data.monthlySpendNpr ?? 0));
+    const bud = data.monthlyBudgetNpr;
+    setMonthlyBudgetNpr(
+      bud === undefined || bud === null ? null : Number(bud),
+    );
+    setMonthlyBudgetConfigured(Boolean(data.monthlyBudgetConfigured));
+    const util = data.budgetUtilizationPercent;
+    setBudgetUtilizationPercent(
+      util === undefined || util === null ? null : Number(util),
+    );
+    setTopVendors(Array.isArray(data.topVendors) ? data.topVendors : []);
+    setDashboardAsOf(
+      typeof data.dashboardAsOf === "string" ? data.dashboardAsOf : "",
+    );
   }, []);
+
+  const silentRefreshStaffDashboard = React.useCallback(async () => {
+    try {
+      const headers = getAuthHeaderFromStorage();
+      const { data } = await axios.get(`${DASHBOARD_API_END_POINT}/summary`, {
+        withCredentials: true,
+        headers,
+        params: { refresh: "1" },
+      });
+      if (data?.success && data.kind === "staff") {
+        applyStaffDashboard(data);
+      }
+    } catch {
+      /* keep last good snapshot */
+    }
+  }, [applyStaffDashboard]);
+
+  React.useEffect(() => {
+    const id = setInterval(() => {
+      silentRefreshStaffDashboard();
+    }, 45_000);
+    return () => clearInterval(id);
+  }, [silentRefreshStaffDashboard]);
 
   React.useEffect(() => {
     const d = staffWorkspace?.dashboard;
@@ -309,37 +393,36 @@ export const StaffDashboard = () => {
   const modules = [
     {
       name: "Purchase Requests",
-      desc: "Create and track procurement requests",
       icon: FileText,
       link: "/purchase-requests",
     },
     {
+      name: "Vendors",
+      icon: Building2,
+      link: "/vendors",
+    },
+    {
       name: "Approvals",
-      desc: "Follow admin approval decisions",
       icon: CheckCircle,
       link: "/approvals",
     },
     {
       name: "Tenders",
-      desc: "Create & publish tenders",
       icon: Gavel,
       link: "/tenders",
     },
     {
       name: "Bids Monitor",
-      desc: "View & manage bids",
       icon: ClipboardList,
       link: "/bids-monitor",
     },
     {
       name: "Payments",
-      desc: "Tender payments",
       icon: Banknote,
       link: "/procurement/payments",
     },
     {
       name: "Deliveries",
-      desc: "Track order delivery progress",
       icon: Truck,
       link: "/deliveries",
     },
@@ -362,9 +445,6 @@ export const StaffDashboard = () => {
             </h1>
             <p className="mt-1 text-sm text-slate-700 sm:text-base">
               Welcome back, {user?.name || user?.fullname}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              Procurement operations
             </p>
           </div>
         </div>
@@ -404,6 +484,258 @@ export const StaffDashboard = () => {
           ))}
         </div>
 
+        <motion.section
+          className="rounded-2xl border border-teal-100/90 bg-white/95 p-5 shadow-md ring-1 ring-slate-900/[0.03] sm:p-6"
+          variants={procurementSectionVariants}
+          initial="hidden"
+          animate="visible"
+        >
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <motion.span
+                  className="inline-flex items-center rounded-full bg-teal-600/10 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-teal-800 ring-1 ring-teal-600/20"
+                  animate={{
+                    opacity: [0.72, 1, 0.72],
+                    boxShadow: [
+                      "0 0 0 0 rgba(13,148,136,0)",
+                      "0 0 0 4px rgba(13,148,136,0.12)",
+                      "0 0 0 0 rgba(13,148,136,0)",
+                    ],
+                  }}
+                  transition={{
+                    duration: 2.8,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  }}
+                >
+                  Live
+                </motion.span>
+              </div>
+              <h2 className="mt-2 text-lg font-semibold tracking-tight text-[#0b1f4d]">
+                Procurement overview
+              </h2>
+            </div>
+            {!loading && dashboardAsOf ? (
+              <motion.p
+                key={dashboardAsOf}
+                className="text-xs text-slate-400"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.35 }}
+              >
+                Snapshot:{" "}
+                {new Date(dashboardAsOf).toLocaleString("en-NP", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                })}
+              </motion.p>
+            ) : null}
+          </div>
+
+          <motion.div
+            className="grid grid-cols-1 gap-4 lg:grid-cols-2"
+            variants={widgetGridVariants}
+            initial="hidden"
+            animate="visible"
+          >
+            <motion.div variants={widgetCardVariants} className="h-full">
+              <MotionLink
+                to="/approvals"
+                className="group flex h-full gap-4 rounded-xl border border-slate-200/90 bg-gradient-to-br from-white to-sky-50/30 p-4 shadow-sm transition-colors hover:border-teal-200"
+                whileHover={{
+                  y: -4,
+                  boxShadow: "0 12px 28px -8px rgba(15, 23, 42, 0.12)",
+                }}
+                whileTap={{ scale: 0.992 }}
+                transition={{ type: "spring", stiffness: 400, damping: 28 }}
+              >
+                <motion.div
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-teal-50 ring-1 ring-teal-100"
+                  whileHover={{ rotate: [0, -6, 6, 0] }}
+                  transition={{ duration: 0.45 }}
+                >
+                  <ClipboardCheck
+                    className="h-6 w-6 text-teal-700"
+                    strokeWidth={2}
+                  />
+                </motion.div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Pending approvals
+                  </p>
+                  <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">
+                    {loading ? "…" : pendingApprovals}
+                  </p>
+                  <p className="mt-1 text-xs font-medium text-teal-800 group-hover:underline">
+                    Open approvals →
+                  </p>
+                </div>
+              </MotionLink>
+            </motion.div>
+
+            <motion.div variants={widgetCardVariants} className="h-full">
+              <MotionLink
+                to="/deliveries"
+                className="group flex h-full gap-4 rounded-xl border border-slate-200/90 bg-gradient-to-br from-white to-sky-50/30 p-4 shadow-sm transition-colors hover:border-teal-200"
+                whileHover={{
+                  y: -4,
+                  boxShadow: "0 12px 28px -8px rgba(15, 23, 42, 0.12)",
+                }}
+                whileTap={{ scale: 0.992 }}
+                transition={{ type: "spring", stiffness: 400, damping: 28 }}
+              >
+                <motion.div
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-sky-50 ring-1 ring-sky-100"
+                  whileHover={{ rotate: [0, 6, -6, 0] }}
+                  transition={{ duration: 0.45 }}
+                >
+                  <CalendarClock
+                    className="h-6 w-6 text-sky-700"
+                    strokeWidth={2}
+                  />
+                </motion.div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Due today
+                  </p>
+                  <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">
+                    {loading ? "…" : deliveriesDueToday}
+                  </p>
+                  <p className="mt-1 text-xs font-medium text-teal-800 group-hover:underline">
+                    View deliveries →
+                  </p>
+                </div>
+              </MotionLink>
+            </motion.div>
+
+            <motion.div
+              variants={widgetCardVariants}
+              className="flex gap-4 rounded-xl border border-slate-200/90 bg-gradient-to-br from-white to-emerald-50/20 p-4 shadow-sm lg:col-span-1"
+              whileHover={{
+                y: -3,
+                boxShadow: "0 10px 26px -10px rgba(5, 150, 105, 0.18)",
+              }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            >
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-50 ring-1 ring-emerald-100">
+                <Scale className="h-6 w-6 text-emerald-700" strokeWidth={2} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  This month · spend vs budget
+                </p>
+                <p className="mt-1 text-lg font-bold text-slate-900">
+                  {loading ? "…" : formatNpr(monthlySpendNpr)}
+                  {!loading && monthlyBudgetConfigured && monthlyBudgetNpr != null ? (
+                    <span className="font-normal text-slate-500">
+                      {" "}
+                      / {formatNpr(monthlyBudgetNpr)}
+                    </span>
+                  ) : null}
+                </p>
+                {!loading && monthlyBudgetConfigured && budgetUtilizationPercent != null ? (
+                  <>
+                    <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                      <motion.div
+                        key={`bar-${budgetUtilizationPercent}-${monthlySpendNpr}`}
+                        className={`h-full rounded-full ${
+                          budgetUtilizationPercent > 100
+                            ? "bg-rose-500"
+                            : budgetUtilizationPercent > 90
+                              ? "bg-amber-500"
+                              : "bg-emerald-500"
+                        }`}
+                        initial={{ width: 0, opacity: 0.6 }}
+                        animate={{
+                          width: `${Math.min(100, Math.max(0, budgetUtilizationPercent))}%`,
+                          opacity: 1,
+                        }}
+                        transition={{
+                          width: {
+                            duration: 0.85,
+                            ease: [0.22, 1, 0.36, 1],
+                          },
+                          opacity: { duration: 0.35 },
+                        }}
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {budgetUtilizationPercent}% of monthly budget
+                      {budgetUtilizationPercent > 100
+                        ? " (over budget)"
+                        : ""}
+                    </p>
+                  </>
+                ) : null}
+              </div>
+            </motion.div>
+
+            <motion.div
+              variants={widgetCardVariants}
+              className="flex gap-4 rounded-xl border border-slate-200/90 bg-gradient-to-br from-white to-amber-50/20 p-4 shadow-sm lg:col-span-1"
+              whileHover={{
+                y: -3,
+                boxShadow: "0 10px 26px -10px rgba(217, 119, 6, 0.15)",
+              }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            >
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-50 ring-1 ring-amber-100">
+                <Award className="h-6 w-6 text-amber-700" strokeWidth={2} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Top vendors
+                </p>
+                {loading ? (
+                  <p className="mt-2 text-sm text-slate-500">…</p>
+                ) : topVendors.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-600">—</p>
+                ) : (
+                  <ol className="mt-2 space-y-2">
+                    {topVendors.map((v, i) => (
+                      <motion.li
+                        key={v.vendorId || i}
+                        className="text-sm"
+                        initial={{ opacity: 0, x: -8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{
+                          delay: 0.35 + i * 0.06,
+                          type: "spring",
+                          stiffness: 380,
+                          damping: 28,
+                        }}
+                      >
+                        <Link
+                          to={`/vendors/${v.vendorId}`}
+                          className="font-medium text-[#0b1f4d] hover:underline"
+                        >
+                          {i + 1}. {v.vendorName}
+                        </Link>
+                        <span className="text-slate-600">
+                          {" "}
+                          · {v.completedPaymentCount} payment
+                          {v.completedPaymentCount === 1 ? "" : "s"},{" "}
+                          {formatNpr(v.totalAmountNpr)}
+                        </span>
+                      </motion.li>
+                    ))}
+                  </ol>
+                )}
+                {!loading && topVendors.length > 0 ? (
+                  <Link
+                    to="/vendors"
+                    className="mt-3 inline-block text-xs font-semibold text-amber-900/90 underline-offset-2 hover:underline"
+                  >
+                    View all vendors →
+                  </Link>
+                ) : null}
+              </div>
+            </motion.div>
+          </motion.div>
+        </motion.section>
+
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <div className="rounded-2xl border border-sky-100/80 bg-white/90 p-5 shadow-md shadow-slate-200/40 backdrop-blur-sm sm:p-6">
@@ -432,7 +764,21 @@ export const StaffDashboard = () => {
             </div>
           </div>
 
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 space-y-4">
+            <div className="rounded-2xl border border-violet-100/90 bg-gradient-to-b from-white to-violet-50/15 p-5 shadow-md sm:p-6">
+              <div className="mb-3 flex items-center gap-3">
+                <span className="h-1 w-9 rounded-full bg-gradient-to-r from-violet-400 to-teal-400" />
+                <h2 className="text-lg font-semibold text-slate-900">
+                  Vendors
+                </h2>
+              </div>
+              <Link
+                to="/vendors"
+                className="mt-4 inline-block text-sm font-semibold text-violet-900 underline-offset-2 hover:text-violet-950 hover:underline"
+              >
+                Open vendor directory →
+              </Link>
+            </div>
             <div className="rounded-2xl border border-sky-100/80 bg-gradient-to-b from-white to-sky-50/20 p-5 shadow-md sm:p-6">
               <div className="mb-3 flex items-center gap-3">
                 <span className="h-1 w-9 rounded-full bg-gradient-to-r from-sky-400 to-teal-400" />
@@ -440,10 +786,6 @@ export const StaffDashboard = () => {
                   Deliveries
                 </h2>
               </div>
-              <p className="text-sm text-slate-600">
-                Track shipment status, delays, and on-time performance from the
-                Deliveries module.
-              </p>
               <Link
                 to="/deliveries"
                 className="mt-4 inline-block text-sm font-semibold text-teal-800 underline-offset-2 hover:text-teal-900 hover:underline"
@@ -463,7 +805,6 @@ export const VendorDashboard = () => {
   const [loading, setLoading] = React.useState(true);
   const [openTenders, setOpenTenders] = React.useState(0);
   const [myBidsCount, setMyBidsCount] = React.useState(0);
-  const [myQuotationsCount, setMyQuotationsCount] = React.useState(0);
   const [totalRevenue, setTotalRevenue] = React.useState(0);
   const [recentBids, setRecentBids] = React.useState([]);
 
@@ -486,7 +827,6 @@ export const VendorDashboard = () => {
         if (data?.success && data.kind === "vendor") {
           setOpenTenders(data.openTenders ?? 0);
           setMyBidsCount(data.myBidsCount ?? 0);
-          setMyQuotationsCount(data.myQuotationsCount ?? 0);
           setTotalRevenue(Number(data.totalRevenue ?? 0));
           setRecentBids(data.recentBids || []);
         }
@@ -501,8 +841,8 @@ export const VendorDashboard = () => {
 
   const stats = [
     {
-      title: "My Quotations",
-      value: String(myQuotationsCount),
+      title: "Tender quotations",
+      value: String(myBidsCount),
       icon: Quote,
       accent: "border-l-teal-500",
     },
@@ -511,12 +851,6 @@ export const VendorDashboard = () => {
       value: String(openTenders),
       icon: Gavel,
       accent: "border-l-sky-500",
-    },
-    {
-      title: "Tender Quotes",
-      value: String(myBidsCount),
-      icon: ClipboardList,
-      accent: "border-l-amber-400",
     },
     {
       title: "Total Revenue",
@@ -529,19 +863,16 @@ export const VendorDashboard = () => {
   const modules = [
     {
       name: "Profile",
-      desc: "Account and preferences",
       icon: Building2,
       link: "/profile",
     },
     {
       name: "Tenders",
-      desc: "Browse open tenders",
       icon: Gavel,
       link: "/tenders",
     },
     {
       name: "Tender quotations",
-      desc: "Quotes you submitted",
       icon: ClipboardList,
       link: "/my-bids",
     },
@@ -565,13 +896,10 @@ export const VendorDashboard = () => {
             <p className="mt-1 text-sm text-slate-700 sm:text-base">
               Welcome back, {user?.name || user?.fullname}
             </p>
-            <p className="mt-1 text-xs text-slate-500">
-              Manage bids and tender quotations
-            </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
           {stats.map((stat, index) => (
             <div
               key={index}
@@ -615,9 +943,6 @@ export const VendorDashboard = () => {
                     </div>
                     <span className="break-words text-center text-sm font-medium text-slate-800 transition group-hover:text-slate-900">
                       {module.name}
-                    </span>
-                    <span className="text-center text-[11px] text-slate-500 sm:text-xs">
-                      {module.desc}
                     </span>
                   </Link>
                 ))}

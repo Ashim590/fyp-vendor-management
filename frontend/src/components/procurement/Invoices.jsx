@@ -21,13 +21,14 @@ import {
   TableRow,
 } from "../ui/table";
 import { toast } from "sonner";
-import { Search, Eye, FileText, Receipt } from "lucide-react";
+import { Search, Eye, Receipt } from "lucide-react";
 import { downloadInvoicePdf } from "@/utils/invoicePdf";
 import {
   WorkspacePageLayout,
   WorkspacePageHeader,
   WorkspaceToolbar,
   WORKSPACE_SELECT_CLASS,
+  WORKSPACE_DATA_TABLE_CLASS,
 } from "../layout/WorkspacePageLayout";
 import {
   Dialog,
@@ -37,6 +38,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "../ui/dialog";
+import { cn } from "@/lib/utils";
 
 const Invoices = () => {
   const dispatch = useDispatch();
@@ -315,10 +317,16 @@ const Invoices = () => {
                 <p className="mb-2 text-xs font-medium uppercase text-slate-500">
                   Line items
                 </p>
-                <Table>
+                <Table className={cn(WORKSPACE_DATA_TABLE_CLASS, "table-fixed")}>
+                  <colgroup>
+                    <col className="w-[46%]" />
+                    <col className="w-[14%]" />
+                    <col className="w-[20%]" />
+                    <col className="w-[20%]" />
+                  </colgroup>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
-                      <TableHead>Item</TableHead>
+                      <TableHead className="text-left">Item</TableHead>
                       <TableHead className="text-right">Qty</TableHead>
                       <TableHead className="text-right">Unit price</TableHead>
                       <TableHead className="text-right">Total</TableHead>
@@ -327,21 +335,21 @@ const Invoices = () => {
                   <TableBody>
                     {(detailInvoice.items || []).map((it, i) => (
                       <TableRow key={i}>
-                        <TableCell>
-                          <span className="font-medium">{it.itemName}</span>
+                        <TableCell className="min-w-0">
+                          <span className="font-medium break-words">{it.itemName}</span>
                           {it.description ? (
-                            <span className="mt-1 block text-xs text-slate-600">
+                            <span className="mt-1 block break-words text-xs text-slate-600">
                               {it.description}
                             </span>
                           ) : null}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="min-w-0 text-right tabular-nums">
                           {it.quantity}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="min-w-0 text-right tabular-nums">
                           {formatCurrency(it.unitPrice)}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="min-w-0 text-right tabular-nums font-medium">
                           {formatCurrency(it.totalPrice)}
                         </TableCell>
                       </TableRow>
@@ -398,27 +406,38 @@ const Invoices = () => {
         </select>
       </WorkspaceToolbar>
 
-      <Table>
+      <Table
+        className={cn(WORKSPACE_DATA_TABLE_CLASS, "table-fixed")}
+      >
+        <colgroup>
+          <col className="w-[3%]" />
+          <col className="w-[11%]" />
+          <col className="w-[20%]" />
+          <col className="w-[18%]" />
+          <col className="w-[6%]" />
+          <col className="w-[10%]" />
+          <col className="w-[14%]" />
+          <col className="w-[8%]" />
+          <col className="w-[10%]" />
+        </colgroup>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="w-10 text-center">S/N</TableHead>
-            <TableHead>Invoice #</TableHead>
-            <TableHead>Vendor</TableHead>
-            <TableHead>PO / tender</TableHead>
-            <TableHead>Items</TableHead>
-            <TableHead>Amount</TableHead>
-            <TableHead>Issue Date</TableHead>
-            <TableHead>Created</TableHead>
-            <TableHead>Due Date</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Actions</TableHead>
+            <TableHead className="text-center">#</TableHead>
+            <TableHead className="text-left">Invoice</TableHead>
+            <TableHead className="text-left">Vendor</TableHead>
+            <TableHead className="text-left">Reference</TableHead>
+            <TableHead className="text-right">Qty</TableHead>
+            <TableHead className="text-right">Amount</TableHead>
+            <TableHead className="text-left">Issued / due</TableHead>
+            <TableHead className="text-left">Status</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {loading ? (
             <TableRow>
-              <TableCell colSpan={9} className="text-center">
-                Loading...
+              <TableCell colSpan={9} className="py-8 text-center text-slate-500">
+                Loading…
               </TableCell>
             </TableRow>
           ) : filteredInvoices.length === 0 ? (
@@ -480,89 +499,100 @@ const Invoices = () => {
               </TableCell>
             </TableRow>
           ) : (
-            filteredInvoices.map((invoice, index) => (
-              <TableRow key={invoice._id}>
-                <TableCell className="w-10 text-center text-xs text-slate-500">
-                  {index + 1}
-                </TableCell>
-                <TableCell className="font-medium">
-                  {invoice.invoiceNumber}
-                </TableCell>
-                <TableCell>{invoice.vendorName}</TableCell>
-                <TableCell>
-                  <div className="flex flex-col gap-1">
-                    <span>{poOrTenderRef(invoice)}</span>
-                    {invoice.tenderPayment || invoice.tender ? (
-                      <Badge variant="statusInfo" className="w-fit text-[10px]">
-                        Tender
-                      </Badge>
+            filteredInvoices.map((invoice, index) => {
+              const refFull = poOrTenderRef(invoice);
+              const itemCount =
+                invoice.itemsCount ?? invoice.items?.length ?? 0;
+              return (
+                <TableRow key={invoice._id} className="align-middle">
+                  <TableCell className="min-w-0 text-center text-xs text-slate-500">
+                    {index + 1}
+                  </TableCell>
+                  <TableCell className="min-w-0 truncate font-medium tabular-nums text-slate-900">
+                    {invoice.invoiceNumber}
+                  </TableCell>
+                  <TableCell className="min-w-0 truncate text-slate-800">
+                    <span title={invoice.vendorName}>{invoice.vendorName}</span>
+                  </TableCell>
+                  <TableCell className="min-w-0">
+                    <p className="truncate text-slate-800" title={refFull}>
+                      {refFull}
+                    </p>
+                  </TableCell>
+                  <TableCell
+                    className="min-w-0 text-right tabular-nums text-slate-600"
+                    title={`${itemCount} line item(s)`}
+                  >
+                    {itemCount}
+                  </TableCell>
+                  <TableCell className="min-w-0 text-right font-medium tabular-nums whitespace-nowrap">
+                    {formatCurrency(invoice.totalAmount)}
+                  </TableCell>
+                  <TableCell className="min-w-0 text-xs leading-snug text-slate-700 whitespace-nowrap">
+                    <div>{formatDate(invoice.issueDate)}</div>
+                    {formatDate(invoice.issueDate) !==
+                    formatDate(invoice.dueDate) ? (
+                      <div className="text-slate-500">
+                        Due {formatDate(invoice.dueDate)}
+                      </div>
                     ) : null}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1">
-                    <FileText className="h-4 w-4 text-gray-400" />
-                    {invoice.itemsCount ?? invoice.items?.length ?? 0} items
-                  </div>
-                </TableCell>
-                <TableCell className="font-medium">
-                  {formatCurrency(invoice.totalAmount)}
-                </TableCell>
-                <TableCell>{formatDate(invoice.issueDate)}</TableCell>
-                <TableCell>{formatDate(invoice.dueDate)}</TableCell>
-                <TableCell>{formatDate(invoice.createdAt)}</TableCell>
-                <TableCell>{getStatusBadge(invoice.status)}</TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      type="button"
-                      title="View details"
-                      onClick={() => openInvoiceDetail(invoice._id)}
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      type="button"
-                      title="Download invoice PDF"
-                      onClick={() => downloadInvoicePdfSafe(invoice)}
-                    >
-                      <Receipt className="h-4 w-4" />
-                    </Button>
-                    {isStaff && invoice.status === "approved" && (
-                      <>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          type="button"
-                          disabled={!!invoicePayBusy[invoice._id]}
-                          onClick={() => createInvoicePayment(invoice._id)}
-                        >
-                          {invoicePayBusy[invoice._id] === "create"
-                            ? "…"
-                            : "Create eSewa payment"}
-                        </Button>
-                        <Button
-                          variant="default"
-                          size="sm"
-                          type="button"
-                          className="bg-teal-600 hover:bg-teal-700"
-                          disabled={!!invoicePayBusy[invoice._id]}
-                          onClick={() => payInvoiceWithEsewa(invoice._id)}
-                        >
-                          {invoicePayBusy[invoice._id] === "pay"
-                            ? "…"
-                            : "Open eSewa checkout"}
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))
+                  </TableCell>
+                  <TableCell className="min-w-0">{getStatusBadge(invoice.status)}</TableCell>
+                  <TableCell className="min-w-0">
+                    <div className="flex flex-nowrap items-center justify-end gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 shrink-0"
+                        type="button"
+                        title="View details"
+                        onClick={() => openInvoiceDetail(invoice._id)}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 shrink-0"
+                        type="button"
+                        title="Download PDF"
+                        onClick={() => downloadInvoicePdfSafe(invoice)}
+                      >
+                        <Receipt className="h-4 w-4" />
+                      </Button>
+                      {isStaff && invoice.status === "approved" && (
+                        <>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            type="button"
+                            className="h-8 shrink-0 px-2 text-xs"
+                            disabled={!!invoicePayBusy[invoice._id]}
+                            onClick={() => createInvoicePayment(invoice._id)}
+                          >
+                            {invoicePayBusy[invoice._id] === "create"
+                              ? "…"
+                              : "Create pay"}
+                          </Button>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            type="button"
+                            className="h-8 shrink-0 bg-teal-600 px-2 text-xs hover:bg-teal-700"
+                            disabled={!!invoicePayBusy[invoice._id]}
+                            onClick={() => payInvoiceWithEsewa(invoice._id)}
+                          >
+                            {invoicePayBusy[invoice._id] === "pay"
+                              ? "…"
+                              : "eSewa"}
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })
           )}
         </TableBody>
       </Table>

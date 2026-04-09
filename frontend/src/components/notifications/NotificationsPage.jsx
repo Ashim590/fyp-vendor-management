@@ -76,21 +76,13 @@ const NotificationsPage = () => {
             <h1 className="text-2xl font-bold tracking-tight text-[#0b1f4d]">
               Notifications
             </h1>
-            <p className="mt-1 text-sm text-slate-600">
-              {unreadCount > 0 ? (
-                <>
-                  <span className="font-semibold text-slate-800">
-                    {unreadCount} unread
-                  </span>
-                  {" — "}
-                  Use <span className="font-medium">Mark as read</span> or{" "}
-                  <span className="font-medium">Dismiss</span> (×) to remove it.
-                  Opening a notification marks it as read automatically.
-                </>
-              ) : (
-                "You are all caught up."
-              )}
-            </p>
+            {unreadCount > 0 ? (
+              <p className="mt-1 text-sm text-slate-600">
+                <span className="font-semibold text-slate-800">
+                  {unreadCount} unread
+                </span>
+              </p>
+            ) : null}
           </div>
         </div>
         {unreadCount > 0 ? (

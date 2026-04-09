@@ -78,12 +78,22 @@ const Login = () => {
     } catch (error) {
       console.error(error);
       const data = error?.response?.data;
-      const serverMsg = data?.message;
-      let msg =
-        (Array.isArray(serverMsg) ? serverMsg.join(", ") : serverMsg) || null;
+      let msg = null;
+      if (typeof data === "string" && data.trim()) {
+        msg = data.replace(/<[^>]*>/g, "").trim().slice(0, 240);
+      } else if (data && typeof data === "object") {
+        const serverMsg = data.message ?? data.error;
+        msg =
+          (Array.isArray(serverMsg) ? serverMsg.join(", ") : serverMsg) || null;
+      }
       if (!msg && error?.response?.status === 403) {
         msg =
           "Sign-in is not allowed yet. If you just registered as a vendor, wait until an administrator approves your account.";
+      }
+      const st = error?.response?.status;
+      if (!msg && (st === 500 || st === 502)) {
+        msg =
+          "API error while signing in. Run the backend until the terminal shows the server port, restart the frontend dev server if you changed backend/.env PORT, then try again.";
       }
       toast.error(msg || error?.message || "Login failed");
     } finally {
@@ -113,10 +123,6 @@ const Login = () => {
               <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 mb-1">
                 Welcome back
               </h1>
-              <p className="text-xs sm:text-sm text-slate-500 max-w-md">
-                Login to manage tenders, review vendor quotations, and keep your
-                NGO&apos;s procurement fully traceable and transparent.
-              </p>
             </div>
 
             <form onSubmit={submitHandler} className="space-y-4">

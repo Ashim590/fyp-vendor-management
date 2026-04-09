@@ -22,6 +22,7 @@ import {
 } from "../utils/cursorPagination";
 import { bustAuthUserCache } from "../utils/authUserCache";
 import { safeClientProfilePhoto } from "../utils/safeClientProfilePhoto";
+import { getJwtSecret } from "../config/secrets";
 
 const router = Router();
 
@@ -457,7 +458,13 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    const match = await bcrypt.compare(password, user.password);
+    let match = false;
+    try {
+      match = await bcrypt.compare(password, user.password);
+    } catch (compareErr) {
+      console.error("login bcrypt.compare failed", compareErr);
+      return res.status(400).json({ message: "Invalid credentials" });
+    }
     if (!match) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
@@ -502,10 +509,13 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    const secret = process.env.JWT_SECRET || "dev_secret";
-    const token = jwt.sign({ userId: user._id, role: user.role }, secret, {
-      expiresIn: "8h",
-    });
+    const token = jwt.sign(
+      { userId: user._id, role: user.role },
+      getJwtSecret(),
+      {
+        expiresIn: "8h",
+      },
+    );
 
     const responsePayload = {
       token,

@@ -14,8 +14,8 @@ const useGetAllJobs = () => {
                 if(res.data.success){
                     dispatch(setAllJobs(res.data.jobs));
                 }
-            } catch (error) {
-                console.log(error);
+            } catch {
+                /* ignore */
             }
         }
         fetchAllJobs();

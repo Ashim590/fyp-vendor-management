@@ -44,8 +44,19 @@ import {
   WorkspacePageLayout,
   WorkspacePageHeader,
   WorkspaceToolbar,
-  WORKSPACE_SELECT_CLASS,
+  WorkspaceSegmentedControl,
+  WORKSPACE_DATA_TABLE_CLASS,
 } from "../layout/WorkspacePageLayout";
+import { cn } from "@/lib/utils";
+
+const IN_PROGRESS_STATUSES = new Set(["pending", "shipped", "in_transit"]);
+const CLOSED_STATUSES = new Set(["received", "inspected"]);
+
+function hasRecordedDelay(d) {
+  return Boolean(
+    (d.delayReason && String(d.delayReason).trim()) || d.delayRecordedAt,
+  );
+}
 
 const STATUS_LABELS = {
   pending: "Pending",
@@ -78,7 +89,11 @@ const Deliveries = () => {
   const { deliveries, loading, error } = useSelector((store) => store.delivery);
   const { user } = useSelector((store) => store.auth);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [lifecycleFilter, setLifecycleFilter] = useState(
+    /** @type {"all" | "in_progress" | "awaiting_receipt" | "closed" | "rejected" | "delayed"} */ (
+      "all"
+    ),
+  );
   const [detail, setDetail] = useState(null);
   const [delayOpen, setDelayOpen] = useState(false);
   const [delayTarget, setDelayTarget] = useState(null);
@@ -233,6 +248,30 @@ const Deliveries = () => {
     }
   };
 
+  const lifecycleCounts = useMemo(() => {
+    let inProgress = 0;
+    let awaitingReceipt = 0;
+    let closed = 0;
+    let rejected = 0;
+    let delayed = 0;
+    for (const d of deliveries) {
+      const s = d.status;
+      if (IN_PROGRESS_STATUSES.has(s)) inProgress += 1;
+      if (s === "delivered") awaitingReceipt += 1;
+      if (CLOSED_STATUSES.has(s)) closed += 1;
+      if (s === "rejected") rejected += 1;
+      if (hasRecordedDelay(d)) delayed += 1;
+    }
+    return {
+      all: deliveries.length,
+      inProgress,
+      awaitingReceipt,
+      closed,
+      rejected,
+      delayed,
+    };
+  }, [deliveries]);
+
   const filteredDeliveries = useMemo(() => {
     return deliveries.filter((delivery) => {
       const ref = (delivery.orderReference || delivery.purchaseOrderNumber || "")
@@ -242,11 +281,27 @@ const Deliveries = () => {
       const q = searchTerm.toLowerCase();
       const matchesSearch =
         !q || ref.includes(q) || num.includes(q) || vendor.includes(q);
-      const matchesStatus =
-        statusFilter === "all" || delivery.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      if (!matchesSearch) return false;
+      const s = delivery.status;
+      if (lifecycleFilter === "all") return true;
+      if (lifecycleFilter === "in_progress") {
+        return IN_PROGRESS_STATUSES.has(s);
+      }
+      if (lifecycleFilter === "awaiting_receipt") {
+        return s === "delivered";
+      }
+      if (lifecycleFilter === "closed") {
+        return CLOSED_STATUSES.has(s);
+      }
+      if (lifecycleFilter === "rejected") {
+        return s === "rejected";
+      }
+      if (lifecycleFilter === "delayed") {
+        return hasRecordedDelay(delivery);
+      }
+      return true;
     });
-  }, [deliveries, searchTerm, statusFilter]);
+  }, [deliveries, searchTerm, lifecycleFilter]);
 
   const getStatusBadge = (status) => {
     const map = {
@@ -328,31 +383,75 @@ const Deliveries = () => {
             className="h-10 border-slate-200/90 pl-10 shadow-sm"
           />
         </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className={WORKSPACE_SELECT_CLASS}
-        >
-          <option value="all">All statuses</option>
-          <option value="pending">Pending</option>
-          <option value="shipped">Shipped</option>
-          <option value="in_transit">In transit</option>
-          <option value="delivered">Delivered</option>
-          <option value="received">Received</option>
-          <option value="inspected">Inspected</option>
-          <option value="rejected">Rejected</option>
-        </select>
       </WorkspaceToolbar>
 
-      <Table>
+      {!loading ? (
+        <div className="mb-4 space-y-3">
+          <WorkspaceSegmentedControl
+            value={lifecycleFilter}
+            onChange={setLifecycleFilter}
+            options={[
+              { value: "all", label: `All (${lifecycleCounts.all})` },
+              {
+                value: "in_progress",
+                label: `In progress (${lifecycleCounts.inProgress})`,
+              },
+              {
+                value: "awaiting_receipt",
+                label: `Awaiting receipt (${lifecycleCounts.awaitingReceipt})`,
+              },
+              {
+                value: "closed",
+                label: `Closed (${lifecycleCounts.closed})`,
+              },
+              {
+                value: "rejected",
+                label: `Rejected (${lifecycleCounts.rejected})`,
+              },
+              {
+                value: "delayed",
+                label: `Delayed (${lifecycleCounts.delayed})`,
+              },
+            ]}
+            className="w-full max-w-5xl flex-wrap"
+          />
+          {deliveries.length > 0 && filteredDeliveries.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-8 text-center text-sm font-medium text-slate-600">
+              No deliveries match this filter or search. Try{" "}
+              <button
+                type="button"
+                className="font-semibold text-teal-800 underline-offset-2 hover:underline"
+                onClick={() => {
+                  setLifecycleFilter("all");
+                  setSearchTerm("");
+                }}
+              >
+                All
+              </button>{" "}
+              or clear search.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <Table className={cn(WORKSPACE_DATA_TABLE_CLASS, "table-fixed")}>
+            <colgroup>
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[20%]" />
+              <col className="w-[11%]" />
+              <col className="w-[11%]" />
+              <col className="w-[13%]" />
+              <col className="min-w-[200px] w-[25%]" />
+            </colgroup>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead>Delivery #</TableHead>
-                <TableHead>Order ref</TableHead>
-                <TableHead>Vendor</TableHead>
-                <TableHead>Expected</TableHead>
-                <TableHead>Actual / received</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead className="text-left">Delivery #</TableHead>
+                <TableHead className="text-left">Order ref</TableHead>
+                <TableHead className="text-left">Vendor</TableHead>
+                <TableHead className="text-left">Expected</TableHead>
+                <TableHead className="text-left">Actual / received</TableHead>
+                <TableHead className="text-left">Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -363,37 +462,46 @@ const Deliveries = () => {
                     Loading…
                   </TableCell>
                 </TableRow>
-              ) : filteredDeliveries.length === 0 ? (
+              ) : deliveries.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8 text-slate-500">
                     No deliveries yet. Records appear after a tender or invoice payment
                     completes.
                   </TableCell>
                 </TableRow>
+              ) : filteredDeliveries.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-slate-500">
+                    No matching deliveries for this filter or search.
+                  </TableCell>
+                </TableRow>
               ) : (
                 filteredDeliveries.map((delivery) => (
                   <TableRow key={delivery._id}>
-                    <TableCell className="font-medium whitespace-nowrap">
+                    <TableCell className="min-w-0 truncate font-medium tabular-nums">
                       {delivery.deliveryNumber}
                     </TableCell>
-                    <TableCell className="whitespace-nowrap">
+                    <TableCell className="min-w-0 truncate whitespace-nowrap">
                       {delivery.orderReference || delivery.purchaseOrderNumber || "—"}
                     </TableCell>
-                    <TableCell>{delivery.vendorName}</TableCell>
-                    <TableCell className="whitespace-nowrap">
+                    <TableCell className="min-w-0">
+                      <span className="line-clamp-2 break-words">{delivery.vendorName}</span>
+                    </TableCell>
+                    <TableCell className="min-w-0 whitespace-nowrap">
                       {formatDate(delivery.expectedDate)}
                     </TableCell>
-                    <TableCell className="whitespace-nowrap">
+                    <TableCell className="min-w-0 whitespace-nowrap">
                       {delivery.actualDate
                         ? formatDate(delivery.actualDate)
                         : "—"}
                     </TableCell>
-                    <TableCell>{getStatusBadge(delivery.status)}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex flex-wrap justify-end gap-1">
+                    <TableCell className="min-w-0">{getStatusBadge(delivery.status)}</TableCell>
+                    <TableCell className="min-w-0 text-right align-top">
+                      <div className="flex flex-col items-end gap-2 md:flex-row md:flex-wrap md:justify-end">
                         <Button
                           variant="outline"
                           size="sm"
+                          className="shrink-0"
                           onClick={() => openDetail(delivery)}
                         >
                           <Eye className="h-4 w-4 sm:mr-1" />
@@ -402,7 +510,7 @@ const Deliveries = () => {
                         {isVendor && nextVendorStatus(delivery.status) && (
                           <Button
                             size="sm"
-                            className="bg-slate-900"
+                            className="shrink-0 bg-slate-900"
                             onClick={() =>
                               handleAdvanceStatus(
                                 delivery._id,
@@ -419,7 +527,7 @@ const Deliveries = () => {
                         {isStaff && delivery.status === "delivered" && (
                           <Button
                             size="sm"
-                            className="bg-teal-700 hover:bg-teal-600"
+                            className="shrink-0 bg-teal-700 shadow-none hover:bg-teal-600"
                             onClick={() => handleReceive(delivery._id)}
                           >
                             <CheckCircle className="h-4 w-4 sm:mr-1" />
@@ -431,6 +539,7 @@ const Deliveries = () => {
                             <Button
                               variant="outline"
                               size="sm"
+                              className="shrink-0"
                               onClick={() => {
                                 openDetail(delivery);
                               }}
@@ -443,7 +552,7 @@ const Deliveries = () => {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="text-amber-800 border-amber-300"
+                              className="shrink-0 text-amber-800 border-amber-300"
                               onClick={() => {
                                 setDelayTarget(delivery);
                                 setDelayReason("");

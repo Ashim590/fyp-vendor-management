@@ -4,6 +4,10 @@ import { cn } from "@/lib/utils";
 export const WORKSPACE_SELECT_CLASS =
   "h-10 min-w-[140px] cursor-pointer rounded-lg border border-slate-200/90 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-slate-300 focus:border-[#0b1f4d]/35 focus:outline-none focus:ring-2 focus:ring-[#0b1f4d]/12";
 
+/** List tables under workspace pages — readable type + relaxed line height in body cells. */
+export const WORKSPACE_DATA_TABLE_CLASS =
+  "text-[13px] [&_tbody>tr>td]:leading-snug [&_tbody>tr>td]:align-middle";
+
 export function WorkspacePageLayout({ children, className }) {
   return (
     <div className={cn("mx-auto w-full max-w-7xl", className)}>{children}</div>

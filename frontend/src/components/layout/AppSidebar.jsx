@@ -5,6 +5,7 @@ import { useNotificationSummary } from "@/context/NotificationSummaryContext";
 import { getUnreadCountsBySidebarPath } from "@/utils/notificationSectionCounts";
 import {
   Bell,
+  Building2,
   CheckCircle,
   ClipboardList,
   FileText,
@@ -25,6 +26,11 @@ const SIDEBAR_CONFIG = {
       path: "/admin?tab=vendors",
       icon: Users,
     },
+    {
+      name: "Vendor directory",
+      path: "/vendors",
+      icon: Building2,
+    },
     { name: "Users", path: "/admin/users", icon: Users },
     { name: "Approvals", path: "/approvals", icon: CheckCircle },
     { name: "Tenders", path: "/tenders", icon: Gavel },
@@ -36,6 +42,7 @@ const SIDEBAR_CONFIG = {
   staff: [
     { name: "Dashboard", path: "/", icon: LayoutDashboard },
     { name: "Purchase Requests", path: "/purchase-requests", icon: FileText },
+    { name: "Vendors", path: "/vendors", icon: Building2 },
     { name: "Approvals", path: "/approvals", icon: CheckCircle },
     { name: "Tenders", path: "/tenders", icon: Gavel },
     { name: "Bids Monitor", path: "/bids-monitor", icon: ClipboardList },

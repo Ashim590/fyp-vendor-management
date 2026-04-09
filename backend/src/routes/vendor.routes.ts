@@ -13,6 +13,7 @@ import {
 } from "../utils/cursorPagination";
 import { bustVendorMarketplaceGateCache } from "../utils/vendorGate";
 import { bustVendorDashboardSummaryCache } from "../utils/vendorDashboardSummaryCache";
+import { safeClientProfilePhoto } from "../utils/safeClientProfilePhoto";
 
 const router = Router();
 
@@ -106,8 +107,7 @@ router.post(
         category: category || undefined,
         panNumber: panNumber || taxId || undefined,
         taxId: taxId || undefined,
-        businessLicense:
-          registrationNumber || businessLicense || undefined,
+        businessLicense: registrationNumber || businessLicense || undefined,
         registrationNumber: registrationNumber || undefined,
         contactPerson: parseContactPerson(contactPerson),
         registeredBy: req.user!._id,
@@ -192,13 +192,45 @@ router.get(
       const raw = await Vendor.find(merged)
         .sort({ createdAt: -1, _id: -1 })
         .limit(pageLimit + 1)
-        .select("-documents -logo")
+        .select("-documents")
         .lean();
 
       const { items, nextCursor, hasMore } = trimExtraDoc(raw, pageLimit);
 
+      const ids = items.map((v) => String((v as { _id: unknown })._id));
+      let vendorsPayload = items as Array<Record<string, unknown>>;
+      if (ids.length > 0) {
+        const registrants = await User.find({
+          vendorProfile: { $in: ids },
+        })
+          .select("vendorProfile profilePhoto")
+          .lean();
+        const fallbackByVendor = new Map<string, string>();
+        for (const u of registrants) {
+          const vid =
+            u.vendorProfile != null ? String(u.vendorProfile) : "";
+          if (!vid) continue;
+          const ph = safeClientProfilePhoto(
+            (u as { profilePhoto?: string }).profilePhoto,
+          );
+          if (ph) fallbackByVendor.set(vid, ph);
+        }
+        vendorsPayload = items.map((v) => {
+          const row = v as Record<string, unknown>;
+          const vid = String(row._id);
+          const rawLogo =
+            typeof row.logo === "string" ? row.logo.trim() : "";
+          const fromVendor =
+            rawLogo.length > 0
+              ? safeClientProfilePhoto(rawLogo) || rawLogo
+              : "";
+          const fallback = fallbackByVendor.get(vid) || "";
+          return { ...row, logo: fromVendor || fallback };
+        });
+      }
+
       return res.status(200).json({
-        vendors: items,
+        vendors: vendorsPayload,
         success: true,
         nextCursor,
         hasMore,
@@ -281,8 +313,7 @@ router.put(
         category: category || undefined,
         panNumber: panNumber || taxId || undefined,
         taxId: taxId || panNumber || undefined,
-        businessLicense:
-          registrationNumber || businessLicense || undefined,
+        businessLicense: registrationNumber || businessLicense || undefined,
         registrationNumber: registrationNumber || undefined,
         contactPerson: parseContactPerson(contactPerson),
       };
@@ -346,20 +377,38 @@ router.get(
   authorize(["ADMIN", "PROCUREMENT_OFFICER", "VENDOR"]),
   async (req: AuthRequest, res) => {
     try {
-      const vendor = await Vendor.findById(req.params.id);
-      if (!vendor)
+      const doc = await Vendor.findById(req.params.id).lean();
+      if (!doc)
         return res
           .status(404)
           .json({ message: "Vendor not found", success: false });
 
       if (
         req.user?.role === "VENDOR" &&
-        String(req.user.vendorProfile) !== String(vendor._id)
+        String(req.user.vendorProfile) !== String(doc._id)
       ) {
         return res.status(403).json({ message: "Forbidden", success: false });
       }
 
-      return res.json({ vendor, success: true });
+      const rawLogo = typeof doc.logo === "string" ? doc.logo.trim() : "";
+      let logoOut =
+        rawLogo.length > 0
+          ? safeClientProfilePhoto(rawLogo) || rawLogo
+          : "";
+      if (!logoOut) {
+        const u = await User.findOne({ vendorProfile: doc._id })
+          .select("profilePhoto")
+          .lean();
+        logoOut =
+          safeClientProfilePhoto(
+            (u as { profilePhoto?: string } | null)?.profilePhoto,
+          ) || "";
+      }
+
+      return res.json({
+        vendor: { ...doc, logo: logoOut },
+        success: true,
+      });
     } catch (err) {
       console.error(err);
       return res

@@ -10,6 +10,7 @@ import {
   parseListLimit,
   trimExtraDoc,
 } from '../utils/cursorPagination';
+import { invalidateStaffSummaryCache } from '../utils/staffDashboardCache';
 
 const router = express.Router();
 
@@ -57,6 +58,7 @@ router.post(
       status: 'pending'
     });
     await approval.save();
+    invalidateStaffSummaryCache();
     res.status(201).json({ success: true, approval: approval.toObject() });
   }
 );
@@ -256,6 +258,7 @@ router.put(
     }
 
     await approval.save();
+    invalidateStaffSummaryCache();
     res.json({
       success: true,
       approval: approval.toObject(),
@@ -297,6 +300,7 @@ router.put(
     }
 
     await approval.save();
+    invalidateStaffSummaryCache();
     res.json({ success: true, approval: approval.toObject() });
   }
 );

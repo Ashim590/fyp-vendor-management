@@ -24,9 +24,6 @@ export function EsewaPaymentForm({ checkoutUrl, payload, onCancel }) {
         <h2 className="text-lg font-semibold text-slate-900">
           Redirecting to eSewa…
         </h2>
-        <p className="mt-2 text-sm text-slate-600">
-          Please continue on the payment page.
-        </p>
         {onCancel && (
           <button
             type="button"

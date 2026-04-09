@@ -32,9 +32,6 @@ export default function InvoiceEsewaReturn() {
           <>
             <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-500" />
             <h1 className="mt-4 text-xl font-semibold text-slate-900">Payment recorded</h1>
-            <p className="mt-2 text-sm text-slate-600">
-              eSewa confirmed this invoice payment. The invoice status will update to paid.
-            </p>
           </>
         ) : (
           <>
@@ -42,11 +39,9 @@ export default function InvoiceEsewaReturn() {
             <h1 className="mt-4 text-xl font-semibold text-slate-900">
               Payment not completed
             </h1>
-            <p className="mt-2 text-sm text-slate-600">
-              {esewaStatus
-                ? `eSewa status: ${esewaStatus}. If you were charged, contact procurement with your reference.`
-                : "The payment did not finish or could not be verified. You can try again from Invoices."}
-            </p>
+            {esewaStatus ? (
+              <p className="mt-2 text-sm text-slate-600">Status: {esewaStatus}</p>
+            ) : null}
           </>
         )}
         {paymentId && (

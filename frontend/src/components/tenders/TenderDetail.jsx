@@ -15,6 +15,8 @@ import SubmitBidForm from "./SubmitBidForm";
 import { motion } from "framer-motion";
 import { LoadingSkeleton } from "../shared/LoadingSkeleton";
 import { ConfirmDialog } from "../ui/confirm-dialog";
+import { WorkspaceSegmentedControl } from "../layout/WorkspacePageLayout";
+import { BarChart3 } from "lucide-react";
 
 const statusConfig = {
   DRAFT: { label: "Draft", className: "bg-slate-200 text-slate-800" },
@@ -45,6 +47,9 @@ const TenderDetail = () => {
   const [questionText, setQuestionText] = useState("");
   const [answerDrafts, setAnswerDrafts] = useState({});
   const [questionBusy, setQuestionBusy] = useState(false);
+  /** Staff-only: /quotation-comparison API payload */
+  const [quotationComparison, setQuotationComparison] = useState(null);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
 
   const isOfficerOrAdmin = user?.role === "admin" || user?.role === "staff";
   const isAdmin = user?.role === "admin";
@@ -52,13 +57,40 @@ const TenderDetail = () => {
   const isVendor = user?.role === "vendor";
 
   const staffCanSelectOrAward =
-    tender &&
-    (tender.status === "PUBLISHED" || tender.status === "CLOSED");
+    tender && (tender.status === "PUBLISHED" || tender.status === "CLOSED");
 
   const sortedQuotations = useMemo(
     () => [...bids].sort((a, b) => Number(a.amount) - Number(b.amount)),
     [bids],
   );
+
+  const [quotationStatusFilter, setQuotationStatusFilter] = useState(
+    /** @type {"all" | "selected" | "not_selected"} */ ("all"),
+  );
+
+  const filteredSortedQuotations = useMemo(() => {
+    if (quotationStatusFilter === "selected") {
+      return sortedQuotations.filter((b) => b.status === "ACCEPTED");
+    }
+    if (quotationStatusFilter === "not_selected") {
+      return sortedQuotations.filter((b) => b.status !== "ACCEPTED");
+    }
+    return sortedQuotations;
+  }, [sortedQuotations, quotationStatusFilter]);
+
+  const quotationFilterCounts = useMemo(() => {
+    const selected = bids.filter((b) => b.status === "ACCEPTED").length;
+    const notSelected = bids.filter((b) => b.status !== "ACCEPTED").length;
+    return { all: bids.length, selected, notSelected };
+  }, [bids]);
+
+  const comparisonByBidId = useMemo(() => {
+    const m = {};
+    for (const c of quotationComparison?.comparisons || []) {
+      m[c.bidId] = c;
+    }
+    return m;
+  }, [quotationComparison]);
 
   const excerpt = (text, max = 120) => {
     const t = String(text || "").trim();
@@ -89,6 +121,21 @@ const TenderDetail = () => {
       .get(`${BID_API_END_POINT}/tender/${id}`, { withCredentials: true })
       .then((res) => setBids(res.data.bids || []))
       .catch(() => setBids([]));
+  };
+
+  const loadQuotationComparison = () => {
+    if (!isOfficerOrAdmin || !id) {
+      setQuotationComparison(null);
+      return;
+    }
+    setComparisonLoading(true);
+    axios
+      .get(`${TENDER_API_END_POINT}/${id}/quotation-comparison`, {
+        withCredentials: true,
+      })
+      .then((res) => setQuotationComparison(res.data || null))
+      .catch(() => setQuotationComparison(null))
+      .finally(() => setComparisonLoading(false));
   };
 
   const loadMyBid = () => {
@@ -126,8 +173,16 @@ const TenderDetail = () => {
   }, [id]);
 
   useEffect(() => {
+    setQuotationStatusFilter("all");
+  }, [id]);
+
+  useEffect(() => {
     if (tender && isOfficerOrAdmin) loadBids();
   }, [tender, isOfficerOrAdmin]);
+
+  useEffect(() => {
+    if (tender && isOfficerOrAdmin) loadQuotationComparison();
+  }, [tender?._id, isOfficerOrAdmin, bids.length]);
 
   useEffect(() => {
     loadMyBid();
@@ -145,6 +200,27 @@ const TenderDetail = () => {
     if (!el) return;
     el.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [location.hash, myBid]);
+
+  useEffect(() => {
+    if (location.hash !== "#tender-automated-comparison") return;
+    if (!isOfficerOrAdmin || !tender?._id) return;
+    const run = () => {
+      const el =
+        document.getElementById("tender-automated-comparison") ||
+        document.getElementById("tender-staff-quotations");
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    run();
+    const t = window.setTimeout(run, 350);
+    return () => window.clearTimeout(t);
+  }, [
+    location.hash,
+    isOfficerOrAdmin,
+    tender?._id,
+    bids.length,
+    comparisonLoading,
+  ]);
 
   useEffect(() => {
     if (!tender?._id || tender.status !== "AWARDED") {
@@ -254,8 +330,8 @@ const TenderDetail = () => {
     setConfirmConfig({
       title: isDraft ? "Remove draft tender?" : "Withdraw this tender?",
       description: isDraft
-        ? "This will permanently delete the draft and remove related bids and pending payments. This cannot be undone."
-        : "The tender will be closed to new bids. Existing submitted bids remain on record.",
+        ? "Deletes the draft and related bids."
+        : "Closes the tender to new bids.",
       variant: isDraft ? "destructive" : "default",
       confirmLabel: isDraft ? "Remove draft" : "Withdraw tender",
       action: async () => {
@@ -286,8 +362,7 @@ const TenderDetail = () => {
   const openDeleteTenderConfirm = () => {
     setConfirmConfig({
       title: "Delete tender?",
-      description:
-        "This will permanently delete this tender and all related bids and pending payments. This action cannot be undone.",
+      description: "Deletes this tender and related bids.",
       variant: "destructive",
       confirmLabel: "Delete tender",
       action: async () => {
@@ -309,8 +384,7 @@ const TenderDetail = () => {
     if (!myBid?._id) return;
     setConfirmConfig({
       title: "Withdraw your quotation?",
-      description:
-        "You can submit again later only if this tender is still open for quotations.",
+      description: "You can submit again if the tender is still open.",
       variant: "destructive",
       confirmLabel: "Withdraw quotation",
       action: async () => {
@@ -346,7 +420,7 @@ const TenderDetail = () => {
             {},
             { withCredentials: true, headers },
           );
-          toast.success("Preferred quotation selected. Award the tender when ready.");
+          toast.success("Quotation selected.");
           setConfirmConfig(null);
           loadTender();
           loadBids();
@@ -367,7 +441,7 @@ const TenderDetail = () => {
     const vendorName = acceptedBid.vendor?.name || "this vendor";
     setConfirmConfig({
       title: "Award this tender?",
-      description: `This will finalize the award to ${vendorName}, mark other quotations as not selected, and record the payment step. After this, change who won only with administrator help if needed.`,
+      description: `Award to ${vendorName}? Other quotations will be marked not selected.`,
       variant: "default",
       confirmLabel: "Award tender",
       action: async () => {
@@ -414,8 +488,7 @@ const TenderDetail = () => {
   const openDeleteBidConfirm = (bidId) => {
     setConfirmConfig({
       title: "Remove this quotation?",
-      description:
-        "This will permanently remove the quotation from the system. This cannot be undone.",
+      description: "Permanent.",
       variant: "destructive",
       confirmLabel: "Remove",
       action: async () => {
@@ -549,6 +622,11 @@ const TenderDetail = () => {
   }
 
   const cfg = statusConfig[tender.status] || statusConfig.DRAFT;
+  /** Vendors who did not win should not see “Awarded” on the tender — the process is complete (“Closed”). */
+  const tenderHeaderBadge =
+    isVendor && tender.status === "AWARDED" && !isAwardedVendor
+      ? { label: "Closed", className: "bg-slate-200 text-slate-800" }
+      : { label: cfg.label, className: cfg.className };
   const canBid = isVendor && tender.status === "PUBLISHED";
 
   return (
@@ -581,7 +659,9 @@ const TenderDetail = () => {
               <span className="font-mono text-sm text-slate-500">
                 {tender.referenceNumber}
               </span>
-              <Badge className={`ml-2 ${cfg.className}`}>{cfg.label}</Badge>
+              <Badge className={`ml-2 ${tenderHeaderBadge.className}`}>
+                {tenderHeaderBadge.label}
+              </Badge>
               <h1 className="text-2xl font-bold text-slate-900 mt-2">
                 {tender.title}
               </h1>
@@ -652,8 +732,7 @@ const TenderDetail = () => {
                 <p className="text-sm text-slate-800">
                   <span className="font-medium">Preferred quotation:</span>{" "}
                   {acceptedBid.vendor?.name || "Vendor"} — NPR{" "}
-                  {Number(acceptedBid.amount).toLocaleString("en-NP")}. Award
-                  the tender to finalize and record payment.
+                  {Number(acceptedBid.amount).toLocaleString("en-NP")}
                 </p>
                 <Button
                   type="button"
@@ -686,7 +765,10 @@ const TenderDetail = () => {
           )}
 
           {isVendor && myBid && (
-            <div id="my-quotation" className="mt-6 pt-4 border-t space-y-3 scroll-mt-24">
+            <div
+              id="my-quotation"
+              className="mt-6 pt-4 border-t space-y-3 scroll-mt-24"
+            >
               <p className="text-sm text-slate-600">
                 Your quotation:{" "}
                 <span className="font-semibold text-slate-900">
@@ -710,7 +792,9 @@ const TenderDetail = () => {
                     Proposal
                   </p>
                   <p className="text-sm text-slate-700 whitespace-pre-wrap rounded-md bg-slate-50 p-3 border min-h-[4rem]">
-                    {myBid.technicalProposal?.trim() ? myBid.technicalProposal : "—"}
+                    {myBid.technicalProposal?.trim()
+                      ? myBid.technicalProposal
+                      : "—"}
                   </p>
                 </div>
                 <div>
@@ -718,7 +802,9 @@ const TenderDetail = () => {
                     Financial / pricing notes
                   </p>
                   <p className="text-sm text-slate-700 whitespace-pre-wrap rounded-md bg-slate-50 p-3 border min-h-[4rem]">
-                    {myBid.financialProposal?.trim() ? myBid.financialProposal : "—"}
+                    {myBid.financialProposal?.trim()
+                      ? myBid.financialProposal
+                      : "—"}
                   </p>
                 </div>
               </div>
@@ -744,15 +830,16 @@ const TenderDetail = () => {
                   </ul>
                 </div>
               )}
-              {myBid.status === "SUBMITTED" && tender.status === "PUBLISHED" && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={openWithdrawMyBidConfirm}
-                >
-                  Withdraw quotation
-                </Button>
-              )}
+              {myBid.status === "SUBMITTED" &&
+                tender.status === "PUBLISHED" && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={openWithdrawMyBidConfirm}
+                  >
+                    Withdraw quotation
+                  </Button>
+                )}
               {Array.isArray(myBid.versionHistory) &&
                 myBid.versionHistory.length > 0 && (
                   <div>
@@ -768,7 +855,8 @@ const TenderDetail = () => {
                             key={`vh-${idx}`}
                             className="rounded-md border bg-slate-50 px-3 py-2 text-xs text-slate-600"
                           >
-                            Edited {new Date(v.editedAt).toLocaleString("en-NP")} •
+                            Edited{" "}
+                            {new Date(v.editedAt).toLocaleString("en-NP")} •
                             Previous amount NPR{" "}
                             {Number(v.amount || 0).toLocaleString("en-NP")}
                           </li>
@@ -808,15 +896,21 @@ const TenderDetail = () => {
               ) : (
                 <div className="space-y-2">
                   {clarifications.map((c) => (
-                    <div key={c._id} className="rounded-md border bg-slate-50 p-3">
+                    <div
+                      key={c._id}
+                      className="rounded-md border bg-slate-50 p-3"
+                    >
                       <p className="text-sm text-slate-800">{c.question}</p>
                       <p className="text-xs text-slate-500 mt-1">
                         Asked by {c?.vendorUser?.name || "Vendor"} on{" "}
-                        {c?.askedAt ? new Date(c.askedAt).toLocaleString("en-NP") : "—"}
+                        {c?.askedAt
+                          ? new Date(c.askedAt).toLocaleString("en-NP")
+                          : "—"}
                       </p>
                       {c.answer ? (
                         <p className="mt-2 text-sm text-teal-800">
-                          <span className="font-medium">Answer:</span> {c.answer}
+                          <span className="font-medium">Answer:</span>{" "}
+                          {c.answer}
                         </p>
                       ) : isOfficerOrAdmin ? (
                         <div className="mt-2 space-y-2">
@@ -854,93 +948,298 @@ const TenderDetail = () => {
         </div>
 
         {isOfficerOrAdmin && (
-          <div className="bg-white rounded-lg border p-4 sm:p-6 space-y-6">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">
-                Tender quotations ({bids.length})
-              </h2>
-              <p className="text-sm text-slate-500 mt-1">
-                {isAdmin && !isOfficer
-                  ? "Read-only monitoring. Procurement officers evaluate and award quotations."
-                  : "Compare quotations by price and proposal. Select a preferred offer, then use Award tender to finalize."}
+          <div
+            id="tender-staff-quotations"
+            className="scroll-mt-24 space-y-6 rounded-2xl border border-slate-200/85 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] ring-1 ring-slate-900/[0.03] sm:p-7"
+          >
+            <div className="border-b border-slate-100 pb-5">
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                Quotations
               </p>
+              <h2 className="mt-1 text-xl font-bold tracking-tight text-[#0b1f4d]">
+                Tender quotations{" "}
+                <span className="font-semibold text-slate-400">
+                  ({bids.length})
+                </span>
+              </h2>
+              {bids.length > 0 && (
+                <div className="mt-4">
+                  <WorkspaceSegmentedControl
+                    value={quotationStatusFilter}
+                    onChange={setQuotationStatusFilter}
+                    options={[
+                      {
+                        value: "all",
+                        label: `All (${quotationFilterCounts.all})`,
+                      },
+                      {
+                        value: "selected",
+                        label: `Selected (${quotationFilterCounts.selected})`,
+                      },
+                      {
+                        value: "not_selected",
+                        label: `Not selected (${quotationFilterCounts.notSelected})`,
+                      },
+                    ]}
+                    className="w-full max-w-xl flex-wrap sm:flex-nowrap"
+                  />
+                </div>
+              )}
             </div>
 
-            {bids.length > 0 && (
-              <div className="rounded-lg border border-slate-200 overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    <tr>
-                      <th className="px-3 py-2">Vendor</th>
-                      <th className="px-3 py-2 text-right">Total (incl. VAT)</th>
-                      <th className="px-3 py-2">Status</th>
-                      <th className="px-3 py-2">Proposal</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedQuotations.map((bid) => (
-                      <tr
-                        key={`cmp-${bid._id}`}
-                        className="border-t border-slate-100 hover:bg-slate-50/80"
-                      >
-                        <td className="px-3 py-2 font-medium text-slate-900">
-                          {bid.vendor?.name || "—"}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          <div>{Number(bid.amount).toLocaleString("en-NP")}</div>
-                          {bid.vatAmount != null &&
-                            Number(bid.vatAmount) > 0 && (
-                              <div className="text-[10px] text-slate-500 font-normal">
-                                incl. VAT
-                              </div>
-                            )}
-                        </td>
-                        <td className="px-3 py-2">
-                          <Badge
-                            className={
-                              bid.status === "ACCEPTED"
-                                ? "bg-emerald-100 text-emerald-800"
-                                : bid.status === "REJECTED"
-                                  ? "bg-red-100 text-red-800"
-                                  : bid.status === "UNDER_REVIEW"
-                                    ? "bg-teal-50 text-teal-800"
-                                    : "bg-amber-100 text-amber-800"
-                            }
+            {bids.length > 0 &&
+              ["SUBMITTED", "UNDER_REVIEW", "ACCEPTED"].some((s) =>
+                bids.some((b) => b.status === s),
+              ) && (
+                <div
+                  id="tender-automated-comparison"
+                  className="scroll-mt-24 space-y-3 rounded-xl border border-teal-200/60 bg-gradient-to-br from-teal-50/90 via-white to-sky-50/50 p-5 shadow-sm ring-1 ring-teal-900/[0.04]"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-teal-100">
+                      <BarChart3
+                        className="h-4 w-4 text-teal-700"
+                        strokeWidth={2}
+                      />
+                    </span>
+                    <h3 className="text-sm font-semibold tracking-tight text-teal-950">
+                      Automated quotation comparison
+                    </h3>
+                  </div>
+                  {comparisonLoading ? (
+                    <p className="text-xs font-medium text-slate-600">
+                      Loading analysis…
+                    </p>
+                  ) : quotationComparison?.comparisons?.length ? (
+                    <ul className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                      {quotationComparison.comparisons
+                        .filter((c) => c.flags?.lowestPrice)
+                        .map((c) => (
+                          <li
+                            key={`lp-${c.bidId}`}
+                            className="rounded-lg border border-teal-200/80 bg-white/95 px-3 py-2 text-xs font-medium text-teal-900 shadow-sm"
                           >
-                            {bid.status === "SUBMITTED"
-                              ? "Pending"
-                              : bid.status === "UNDER_REVIEW"
-                                ? "Under review"
-                                : bid.status === "ACCEPTED"
-                                  ? tender?.status === "AWARDED"
-                                    ? "Awarded"
-                                    : "Selected"
-                                  : bid.status}
-                          </Badge>
-                        </td>
-                        <td className="px-3 py-2 text-slate-600 max-w-xs">
-                          {excerpt(bid.technicalProposal)}
-                        </td>
+                            Lowest price:{" "}
+                            {isOfficerOrAdmin && c.vendorId ? (
+                              <Link
+                                to={`/vendors/${c.vendorId}`}
+                                className="font-semibold underline-offset-2 hover:underline"
+                              >
+                                {c.vendorName}
+                              </Link>
+                            ) : (
+                              c.vendorName
+                            )}
+                          </li>
+                        ))}
+                      {quotationComparison.comparisons
+                        .filter((c) => c.flags?.fastestDelivery)
+                        .map((c) => (
+                          <li
+                            key={`fd-${c.bidId}`}
+                            className="rounded-lg border border-sky-200/80 bg-white/95 px-3 py-2 text-xs font-medium text-sky-900 shadow-sm"
+                          >
+                            Fastest delivery:{" "}
+                            {isOfficerOrAdmin && c.vendorId ? (
+                              <Link
+                                to={`/vendors/${c.vendorId}`}
+                                className="font-semibold underline-offset-2 hover:underline"
+                              >
+                                {c.vendorName}
+                              </Link>
+                            ) : (
+                              c.vendorName
+                            )}
+                            {c.deliveryDaysOffer != null
+                              ? ` (${c.deliveryDaysOffer}d)`
+                              : ""}
+                          </li>
+                        ))}
+                      {quotationComparison.comparisons
+                        .filter((c) => c.flags?.suggestedBestValue)
+                        .map((c) => (
+                          <li
+                            key={`bv-${c.bidId}`}
+                            className="rounded-lg border border-violet-200/80 bg-white/95 px-3 py-2 text-xs font-medium text-violet-900 shadow-sm"
+                          >
+                            Suggested best value:{" "}
+                            {isOfficerOrAdmin && c.vendorId ? (
+                              <Link
+                                to={`/vendors/${c.vendorId}`}
+                                className="font-semibold underline-offset-2 hover:underline"
+                              >
+                                {c.vendorName}
+                              </Link>
+                            ) : (
+                              c.vendorName
+                            )}
+                          </li>
+                        ))}
+                    </ul>
+                  ) : (
+                    <p className="text-xs font-medium text-slate-600">
+                      No comparison data yet.
+                    </p>
+                  )}
+                </div>
+              )}
+
+            {bids.length > 0 && filteredSortedQuotations.length === 0 && (
+              <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-8 text-center text-sm font-medium text-slate-600">
+                No quotations match this filter. Try{" "}
+                <button
+                  type="button"
+                  className="font-semibold text-teal-800 underline-offset-2 hover:underline"
+                  onClick={() => setQuotationStatusFilter("all")}
+                >
+                  All
+                </button>
+                .
+              </p>
+            )}
+
+            {bids.length > 0 && filteredSortedQuotations.length > 0 && (
+              <div className="overflow-hidden rounded-xl border border-slate-200/90 shadow-sm ring-1 ring-slate-900/[0.03]">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="border-b border-slate-200/90 bg-slate-50/95 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                      <tr>
+                        <th className="px-4 py-3">Vendor</th>
+                        <th className="px-4 py-3 text-right">
+                          Total (incl. VAT)
+                        </th>
+                        <th className="px-4 py-3 text-right">Lead time</th>
+                        <th className="px-4 py-3">Highlights</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3">Proposal</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {filteredSortedQuotations.map((bid) => {
+                        const comp = comparisonByBidId[String(bid._id)];
+                        const hf =
+                          comp?.flags &&
+                          (comp.flags.lowestPrice ||
+                            comp.flags.fastestDelivery ||
+                            comp.flags.suggestedBestValue);
+                        return (
+                          <tr
+                            key={`cmp-${bid._id}`}
+                            className="transition-colors hover:bg-slate-50/90"
+                          >
+                            <td className="px-4 py-3 font-medium text-slate-900">
+                              {isOfficerOrAdmin && bid.vendor?._id ? (
+                                <Link
+                                  to={`/vendors/${bid.vendor._id}`}
+                                  className="text-teal-800 underline-offset-2 hover:underline"
+                                >
+                                  {bid.vendor?.name || "—"}
+                                </Link>
+                              ) : (
+                                bid.vendor?.name || "—"
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right tabular-nums text-slate-800">
+                              <div className="font-medium">
+                                {Number(bid.amount).toLocaleString("en-NP")}
+                              </div>
+                              {bid.vatAmount != null &&
+                                Number(bid.vatAmount) > 0 && (
+                                  <div className="text-[10px] font-normal text-slate-500">
+                                    incl. VAT
+                                  </div>
+                                )}
+                            </td>
+                            <td className="px-4 py-3 text-right tabular-nums text-slate-700">
+                              {bid.deliveryDaysOffer != null &&
+                              bid.deliveryDaysOffer !== ""
+                                ? `${bid.deliveryDaysOffer} days`
+                                : "—"}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-wrap gap-1">
+                                {comparisonByBidId[String(bid._id)]?.flags
+                                  ?.lowestPrice && (
+                                  <Badge className="border-0 bg-teal-100 text-[10px] font-semibold text-teal-800">
+                                    Lowest price
+                                  </Badge>
+                                )}
+                                {comparisonByBidId[String(bid._id)]?.flags
+                                  ?.fastestDelivery && (
+                                  <Badge className="border-0 bg-sky-100 text-[10px] font-semibold text-sky-800">
+                                    Fastest delivery
+                                  </Badge>
+                                )}
+                                {comparisonByBidId[String(bid._id)]?.flags
+                                  ?.suggestedBestValue && (
+                                  <Badge className="border-0 bg-violet-100 text-[10px] font-semibold text-violet-800">
+                                    Best value
+                                  </Badge>
+                                )}
+                                {!hf ? "—" : null}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge
+                                className={
+                                  bid.status === "ACCEPTED"
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : bid.status === "REJECTED"
+                                      ? "bg-red-100 text-red-800"
+                                      : bid.status === "UNDER_REVIEW"
+                                        ? "bg-teal-50 text-teal-800"
+                                        : "bg-amber-100 text-amber-800"
+                                }
+                              >
+                                {bid.status === "SUBMITTED"
+                                  ? "Pending"
+                                  : bid.status === "UNDER_REVIEW"
+                                    ? "Under review"
+                                    : bid.status === "ACCEPTED"
+                                      ? tender?.status === "AWARDED"
+                                        ? "Awarded"
+                                        : "Selected"
+                                      : bid.status === "REJECTED"
+                                        ? "Not selected"
+                                        : bid.status}
+                              </Badge>
+                            </td>
+                            <td className="max-w-xs px-4 py-3 text-slate-600">
+                              {excerpt(bid.technicalProposal)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
             {bids.length === 0 ? (
-              <p className="text-slate-500">No quotations yet.</p>
-            ) : (
+              <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-4 py-8 text-center text-sm font-medium text-slate-600">
+                No quotations yet.
+              </p>
+            ) : filteredSortedQuotations.length === 0 ? null : (
               <div className="space-y-4">
-                {bids.map((bid) => (
+                {filteredSortedQuotations.map((bid) => (
                   <div
                     key={bid._id}
-                    className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-3"
+                    className="space-y-4 rounded-xl border border-slate-200/90 bg-white p-5 shadow-sm ring-1 ring-slate-900/[0.03] sm:p-6"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div className="space-y-1 min-w-0 flex-1">
                         <p className="font-semibold text-slate-900">
-                          {bid.vendor?.name || "Vendor"}
+                          {isOfficerOrAdmin && bid.vendor?._id ? (
+                            <Link
+                              to={`/vendors/${bid.vendor._id}`}
+                              className="text-teal-800 underline-offset-2 hover:underline"
+                            >
+                              {bid.vendor?.name || "Vendor"}
+                            </Link>
+                          ) : (
+                            bid.vendor?.name || "Vendor"
+                          )}
                         </p>
                         {bid.vendor?.email && (
                           <p className="text-xs text-slate-500">
@@ -968,63 +1267,100 @@ const TenderDetail = () => {
                             ? new Date(bid.createdAt).toLocaleString("en-NP")
                             : "—"}
                         </p>
-                        <Badge
-                          className={
-                            bid.status === "ACCEPTED"
-                              ? "bg-emerald-100 text-emerald-800"
+                        {!acceptedBid ? (
+                          <Badge
+                            className={
+                              bid.status === "ACCEPTED"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : bid.status === "REJECTED"
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-slate-200 text-slate-800"
+                            }
+                          >
+                            {bid.status === "ACCEPTED"
+                              ? tender?.status === "AWARDED"
+                                ? "Awarded"
+                                : "Selected"
                               : bid.status === "REJECTED"
-                                ? "bg-red-100 text-red-800"
-                                : "bg-slate-200 text-slate-800"
-                          }
-                        >
-                          {bid.status === "ACCEPTED"
-                            ? tender?.status === "AWARDED"
-                              ? "Awarded"
-                              : "Selected"
-                            : bid.status}
-                        </Badge>
-                        {bid.status === "REJECTED" && bid.rejectionReason && (
-                          <p className="text-xs text-red-700 mt-1">
-                            Reason: {bid.rejectionReason}
-                          </p>
-                        )}
+                                ? "Not selected"
+                                : bid.status}
+                          </Badge>
+                        ) : null}
+                        {bid.status === "REJECTED" &&
+                          bid.rejectionReason &&
+                          !acceptedBid && (
+                            <p className="text-xs text-red-700 mt-1">
+                              Reason: {bid.rejectionReason}
+                            </p>
+                          )}
                       </div>
-                      <div className="flex flex-wrap gap-2 shrink-0 justify-end">
-                        {isOfficer &&
-                          staffCanSelectOrAward &&
-                          (bid.status === "SUBMITTED" ||
-                            bid.status === "UNDER_REVIEW") && (
-                            <>
-                              {bid.status === "SUBMITTED" && (
+                      {acceptedBid ? (
+                        <div className="shrink-0 text-right sm:min-w-[7rem]">
+                          <p
+                            className={
+                              bid.status === "ACCEPTED"
+                                ? "text-sm font-semibold text-emerald-800"
+                                : "text-sm font-medium text-slate-600"
+                            }
+                          >
+                            {bid.status === "ACCEPTED"
+                              ? tender?.status === "AWARDED"
+                                ? "Awarded"
+                                : "Selected"
+                              : "Not selected"}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                          {isOfficer &&
+                            staffCanSelectOrAward &&
+                            (bid.status === "SUBMITTED" ||
+                              bid.status === "UNDER_REVIEW") && (
+                              <>
+                                {bid.status === "SUBMITTED" && (
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    onClick={() => {
+                                      axios
+                                        .patch(
+                                          `${BID_API_END_POINT}/${bid._id}/evaluate`,
+                                          { status: "UNDER_REVIEW" },
+                                          { withCredentials: true },
+                                        )
+                                        .then(() => {
+                                          toast.success("Marked under review.");
+                                          loadBids();
+                                        })
+                                        .catch(() =>
+                                          toast.error(
+                                            "Could not update status.",
+                                          ),
+                                        );
+                                    }}
+                                  >
+                                    Mark under review
+                                  </Button>
+                                )}
                                 <Button
                                   size="sm"
-                                  variant="secondary"
-                                  onClick={() => {
-                                    axios
-                                      .patch(
-                                        `${BID_API_END_POINT}/${bid._id}/evaluate`,
-                                        { status: "UNDER_REVIEW" },
-                                        { withCredentials: true },
-                                      )
-                                      .then(() => {
-                                        toast.success("Marked under review.");
-                                        loadBids();
-                                      })
-                                      .catch(() =>
-                                        toast.error("Could not update status."),
-                                      );
-                                  }}
+                                  className="bg-emerald-600 hover:bg-emerald-700"
+                                  onClick={() => openSelectBidConfirm(bid._id)}
                                 >
-                                  Mark under review
+                                  Select
                                 </Button>
-                              )}
-                              <Button
-                                size="sm"
-                                className="bg-emerald-600 hover:bg-emerald-700"
-                                onClick={() => openSelectBidConfirm(bid._id)}
-                              >
-                                Select
-                              </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleRejectBid(bid._id)}
+                                >
+                                  Not selected
+                                </Button>
+                              </>
+                            )}
+                          {isOfficer &&
+                            staffCanSelectOrAward &&
+                            bid.status === "ACCEPTED" && (
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -1032,46 +1368,35 @@ const TenderDetail = () => {
                               >
                                 Not selected
                               </Button>
-                            </>
-                          )}
-                        {isOfficer &&
-                          staffCanSelectOrAward &&
-                          bid.status === "ACCEPTED" && (
+                            )}
+                          {(isAdmin || isOfficer) && (
                             <Button
                               size="sm"
-                              variant="outline"
-                              onClick={() => handleRejectBid(bid._id)}
+                              variant="destructive"
+                              onClick={() => openDeleteBidConfirm(bid._id)}
                             >
-                              Not selected
+                              Remove quotation
                             </Button>
                           )}
-                        {(isAdmin || isOfficer) && (
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => openDeleteBidConfirm(bid._id)}
-                          >
-                            Remove quotation
-                          </Button>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-slate-200">
+                    <div className="grid grid-cols-1 gap-4 border-t border-slate-100 pt-5 md:grid-cols-2 md:gap-5">
                       <div>
-                        <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+                        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                           Proposal
                         </p>
-                        <p className="text-sm text-slate-700 whitespace-pre-wrap rounded-md bg-white p-3 border min-h-[4rem]">
+                        <p className="min-h-[4rem] whitespace-pre-wrap rounded-lg border border-slate-200/90 bg-slate-50/50 p-3.5 text-sm leading-relaxed text-slate-700">
                           {bid.technicalProposal?.trim()
                             ? bid.technicalProposal
                             : "—"}
                         </p>
                       </div>
                       <div>
-                        <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+                        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                           Financial / pricing notes
                         </p>
-                        <p className="text-sm text-slate-700 whitespace-pre-wrap rounded-md bg-white p-3 border min-h-[4rem]">
+                        <p className="min-h-[4rem] whitespace-pre-wrap rounded-lg border border-slate-200/90 bg-slate-50/50 p-3.5 text-sm leading-relaxed text-slate-700">
                           {bid.financialProposal?.trim()
                             ? bid.financialProposal
                             : "—"}
@@ -1080,7 +1405,7 @@ const TenderDetail = () => {
                     </div>
                     {Array.isArray(bid.documents) &&
                       bid.documents.length > 0 && (
-                        <div className="pt-2 border-t border-slate-200">
+                        <div className="border-t border-slate-100 pt-4">
                           <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
                             Attachments
                           </p>
@@ -1110,15 +1435,21 @@ const TenderDetail = () => {
 
         {tender.status === "AWARDED" && (
           <div className="bg-white rounded-lg border p-4 sm:p-6 mt-6 space-y-3">
-            <h2 className="text-lg font-semibold text-slate-900">Tender payment</h2>
+            <h2 className="text-lg font-semibold text-slate-900">
+              Tender payment
+            </h2>
             {isOfficerOrAdmin && (
               <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-4 text-sm">
                 {staffTenderPayments.length > 0 ? (
                   <div className="space-y-2">
                     <p>
-                      <span className="font-medium text-slate-800">Status:</span>{" "}
+                      <span className="font-medium text-slate-800">
+                        Status:
+                      </span>{" "}
                       {staffTenderPayments[0].status} — NPR{" "}
-                      {Number(staffTenderPayments[0].amount || 0).toLocaleString("en-NP")}
+                      {Number(
+                        staffTenderPayments[0].amount || 0,
+                      ).toLocaleString("en-NP")}
                     </p>
                     <p className="font-mono text-xs text-slate-500">
                       {staffTenderPayments[0].paymentNumber}
@@ -1146,7 +1477,9 @@ const TenderDetail = () => {
                     </Button>
                   </div>
                 ) : (
-                  <p className="text-amber-800">No accepted quotation found for this award.</p>
+                  <p className="text-amber-800">
+                    No accepted quotation found for this award.
+                  </p>
                 )}
               </div>
             )}
@@ -1167,12 +1500,8 @@ const TenderDetail = () => {
                   <div className="space-y-2 text-slate-800">
                     <p>
                       Amount recorded: NPR{" "}
-                      {Number(myTenderPayment.amount).toLocaleString("en-NP")} — status{" "}
-                      <span className="font-semibold">Pending</span>.
-                    </p>
-                    <p className="text-slate-600">
-                      You cannot pay from the vendor portal. Procurement completes payment;
-                      check <Link className="font-medium text-teal-800 underline-offset-2 hover:underline" to="/my-payments">My payments</Link> for updates.
+                      {Number(myTenderPayment.amount).toLocaleString("en-NP")} —
+                      status <span className="font-semibold">Pending</span>.
                     </p>
                   </div>
                 ) : (
@@ -1185,7 +1514,6 @@ const TenderDetail = () => {
             )}
           </div>
         )}
-
       </div>
     </motion.div>
   );

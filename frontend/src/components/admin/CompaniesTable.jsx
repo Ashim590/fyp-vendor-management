@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '../ui/table'
+import { cn } from '@/lib/utils'
+import { WORKSPACE_DATA_TABLE_CLASS } from '../layout/WorkspacePageLayout'
 import { Avatar, AvatarImage } from '../ui/avatar'
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
 import { Edit2, MoreHorizontal } from 'lucide-react'
@@ -22,28 +24,34 @@ const CompaniesTable = () => {
     },[companies,searchCompanyByText])
     return (
         <div>
-            <Table>
+            <Table className={cn(WORKSPACE_DATA_TABLE_CLASS, "table-fixed")}>
                 <TableCaption>A list of your recent registered companies</TableCaption>
+                <colgroup>
+                    <col className="w-[12%]" />
+                    <col className="w-[48%]" />
+                    <col className="w-[22%]" />
+                    <col className="w-[18%]" />
+                </colgroup>
                 <TableHeader>
                     <TableRow>
-                        <TableHead>Logo</TableHead>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Date</TableHead>
+                        <TableHead className="text-left">Logo</TableHead>
+                        <TableHead className="text-left">Name</TableHead>
+                        <TableHead className="text-left">Date</TableHead>
                         <TableHead className="text-right">Action</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {
                         filterCompany?.map((company) => (
-                            <tr>
-                                <TableCell>
+                            <TableRow key={company._id}>
+                                <TableCell className="min-w-0">
                                     <Avatar>
                                         <AvatarImage src={company.logo}/>
                                     </Avatar>
                                 </TableCell>
-                                <TableCell>{company.name}</TableCell>
-                                <TableCell>{company.createdAt.split("T")[0]}</TableCell>
-                                <TableCell className="text-right cursor-pointer">
+                                <TableCell className="min-w-0 truncate font-medium">{company.name}</TableCell>
+                                <TableCell className="min-w-0 whitespace-nowrap">{company.createdAt.split("T")[0]}</TableCell>
+                                <TableCell className="min-w-0 text-right cursor-pointer">
                                     <Popover>
                                         <PopoverTrigger><MoreHorizontal /></PopoverTrigger>
                                         <PopoverContent className="w-32">
@@ -54,7 +62,7 @@ const CompaniesTable = () => {
                                         </PopoverContent>
                                     </Popover>
                                 </TableCell>
-                            </tr>
+                            </TableRow>
 
                         ))
                     }

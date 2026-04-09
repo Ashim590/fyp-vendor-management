@@ -19,6 +19,8 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
   const [compliance, setCompliance] = useState("");
   const [differentiators, setDifferentiators] = useState("");
   const [quotationValidity, setQuotationValidity] = useState("");
+  /** Numeric calendar days from contract award — used for automated quotation comparison on procurement side. */
+  const [deliveryDaysOffer, setDeliveryDaysOffer] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("");
   const [esewaId, setEsewaId] = useState("");
   const [merchantName, setMerchantName] = useState("");
@@ -100,6 +102,9 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
         setPaymentTerms(String(d.paymentTerms || ""));
         setEsewaId(String(d.esewaId || ""));
         setMerchantName(String(d.merchantName || ""));
+        setDeliveryDaysOffer(
+          d.deliveryDaysOffer != null ? String(d.deliveryDaysOffer) : "",
+        );
       } catch {
         // ignore local parse failures
       }
@@ -117,6 +122,9 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
         const tech = String(b.technicalProposal || "");
         setScopeOfWork(tech);
         setDeliveryTimeline("");
+        if (b.deliveryDaysOffer != null && Number(b.deliveryDaysOffer) >= 0) {
+          setDeliveryDaysOffer(String(b.deliveryDaysOffer));
+        }
         setCompliance("");
         setDifferentiators("");
         setQuotationValidity("");
@@ -146,6 +154,7 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
         paymentTerms,
         esewaId,
         merchantName,
+        deliveryDaysOffer,
       }),
     );
   }, [
@@ -160,6 +169,7 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
     paymentTerms,
     esewaId,
     merchantName,
+    deliveryDaysOffer,
   ]);
 
   const saveDraft = async () => {
@@ -191,6 +201,9 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
       }
       if (technicalProposal.trim()) formData.append("proposal", technicalProposal);
       if (paymentTerms.trim()) formData.append("financialProposal", paymentTerms.trim());
+      if (deliveryDaysOffer.trim() !== "") {
+        formData.append("deliveryDaysOffer", deliveryDaysOffer.trim());
+      }
       files.forEach((f) => formData.append("documents", f));
       await axios.post(`${BID_API_END_POINT}/draft`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -274,6 +287,9 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
       formData.append("proposal", technicalProposal);
       if (financialNotes.trim()) {
         formData.append("financialProposal", financialNotes.trim());
+      }
+      if (deliveryDaysOffer.trim() !== "") {
+        formData.append("deliveryDaysOffer", deliveryDaysOffer.trim());
       }
       files.forEach((f) => formData.append("documents", f));
 
@@ -374,6 +390,19 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
               maximumFractionDigits: 2,
             })}
           </p>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">
+            Delivery lead time (optional)
+          </label>
+          <input
+            type="number"
+            min="0"
+            value={deliveryDaysOffer}
+            onChange={(e) => setDeliveryDaysOffer(e.target.value)}
+            placeholder="Days"
+            className="w-full max-w-md border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500"
+          />
         </div>
       </div>
 

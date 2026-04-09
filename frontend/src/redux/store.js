@@ -24,11 +24,13 @@ import invoiceSlice from "./invoiceSlice";
 
 const persistConfig = {
   key: "root",
-  version: 2,
+  version: 3,
   storage,
   // Auth is persisted separately so transient flags like `loading`
   // are never rehydrated into stuck UI states.
-  blacklist: ["auth"],
+  // Vendor list often includes large base64 logos — persisting it hits
+  // localStorage quota and can rehydrate stale rows without images.
+  blacklist: ["auth", "vendor"],
 };
 
 const authPersistConfig = {

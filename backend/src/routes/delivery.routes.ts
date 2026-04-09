@@ -10,6 +10,7 @@ import {
   parseListLimit,
   trimExtraDoc,
 } from "../utils/cursorPagination";
+import { invalidateStaffSummaryCache } from "../utils/staffDashboardCache";
 
 const router = express.Router();
 
@@ -83,6 +84,7 @@ router.post(
     });
 
     await delivery.save();
+    invalidateStaffSummaryCache();
     res.status(201).json({ success: true, delivery: delivery.toObject() });
   },
 );
@@ -267,6 +269,7 @@ router.patch(
       excludeUserId: req.user!._id,
     }).catch(() => {});
 
+    invalidateStaffSummaryCache();
     res.json({ success: true, delivery: delivery.toObject() });
   },
 );
@@ -314,6 +317,7 @@ router.patch(
       excludeUserId: req.user!._id,
     }).catch(() => {});
 
+    invalidateStaffSummaryCache();
     res.json({ success: true, delivery: delivery.toObject() });
   },
 );
@@ -398,6 +402,7 @@ router.put(
       excludeUserId: req.user!._id,
     }).catch(() => {});
 
+    invalidateStaffSummaryCache();
     res.json({ success: true, delivery: delivery.toObject() });
   },
 );
@@ -430,6 +435,7 @@ router.put(
       },
     );
     await delivery.save();
+    invalidateStaffSummaryCache();
     res.json({ success: true, delivery: delivery.toObject() });
   },
 );

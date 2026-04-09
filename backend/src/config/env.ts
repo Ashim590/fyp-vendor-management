@@ -1,5 +1,7 @@
 /**
+ * Public URLs for redirects and webhooks (eSewa, emails).
  * Prefer BACKEND_URL / FRONTEND_URL. SERVER_BASE_URL / CLIENT_BASE_URL are legacy aliases.
+ * In production on Render/Railway, set explicit https URLs — do not rely on localhost defaults.
  */
 export function getBackendUrl(): string {
   const explicit = process.env.BACKEND_URL || process.env.SERVER_BASE_URL;

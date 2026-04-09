@@ -17,7 +17,10 @@ import { getAuthHeaderFromStorage } from "@/utils/authHeader";
 import {
   WorkspacePageLayout,
   WorkspacePageHeader,
+  WORKSPACE_DATA_TABLE_CLASS,
 } from "../layout/WorkspacePageLayout";
+import { cn } from "@/lib/utils";
+import { ExternalLink, Trash2 } from "lucide-react";
 
 const bidStatusVariant = {
   SUBMITTED: "statusInfo",
@@ -91,14 +94,24 @@ const AdminBidsMonitor = () => {
         </div>
       ) : null}
 
-      <Table>
+      <Table
+        className={cn(WORKSPACE_DATA_TABLE_CLASS, "table-fixed")}
+      >
+        <colgroup>
+          <col className="w-[24%]" />
+          <col className="w-[18%]" />
+          <col className="w-[14%]" />
+          <col className="w-[12%]" />
+          <col className="w-[12%]" />
+          <col className="w-[20%]" />
+        </colgroup>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead>Tender</TableHead>
-            <TableHead>Vendor</TableHead>
-            <TableHead>Total (incl. VAT)</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Submitted</TableHead>
+            <TableHead className="text-left">Tender</TableHead>
+            <TableHead className="text-left">Vendor</TableHead>
+            <TableHead className="text-left">Total (incl. VAT)</TableHead>
+            <TableHead className="text-left">Status</TableHead>
+            <TableHead className="text-left">Submitted</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -118,45 +131,57 @@ const AdminBidsMonitor = () => {
           ) : (
             bids.map((b) => (
               <TableRow key={b._id}>
-                <TableCell>
-                  <div className="font-medium text-slate-900">
+                <TableCell className="min-w-0">
+                  <div className="line-clamp-2 font-medium break-words text-slate-900">
                     {b.tender?.title || "—"}
                   </div>
-                  <div className="font-mono text-xs text-slate-500">
+                  <div className="truncate font-mono text-xs text-slate-500">
                     {b.tender?.referenceNumber}
                   </div>
                 </TableCell>
-                <TableCell className="text-slate-700">{b.vendor?.name || "—"}</TableCell>
-                <TableCell className="tabular-nums font-medium text-slate-900">
+                <TableCell className="min-w-0 text-slate-700">
+                  <span className="line-clamp-2 break-words">{b.vendor?.name || "—"}</span>
+                </TableCell>
+                <TableCell className="min-w-0 tabular-nums text-sm font-medium text-slate-900">
                   {typeof b.amount === "number" ? formatCurrency(b.amount) : "—"}
                 </TableCell>
-                <TableCell>
+                <TableCell className="min-w-0">
                   <Badge
                     variant={bidStatusVariant[b.status] || "statusNeutral"}
-                    className="whitespace-nowrap"
+                    className="whitespace-nowrap text-xs"
                   >
                     {b.status || "UNKNOWN"}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-slate-600">
+                <TableCell className="min-w-0 whitespace-nowrap text-slate-600">
                   {b.createdAt
                     ? new Date(b.createdAt).toLocaleDateString("en-NP")
                     : "—"}
                 </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2 whitespace-nowrap">
+                <TableCell className="min-w-0 text-right">
+                  <div className="flex flex-wrap items-center justify-end gap-1.5">
                     {b.tender?._id && (
-                      <Button variant="outline" size="sm" className="h-8 border-slate-200" asChild>
-                        <Link to={`/tenders/${b.tender._id}`}>Tender</Link>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 border-slate-200"
+                        asChild
+                      >
+                        <Link to={`/tenders/${b.tender._id}`} title="Open tender">
+                          <ExternalLink className="h-4 w-4" />
+                          <span className="sr-only">Tender</span>
+                        </Link>
                       </Button>
                     )}
                     <Button
                       variant="outline"
-                      size="sm"
-                      className="h-8 border-rose-200 text-rose-800 hover:bg-rose-50"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 border-rose-200 text-rose-800 hover:bg-rose-50"
+                      title="Delete bid"
                       onClick={() => handleDeleteBid(b._id)}
                     >
-                      Delete
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Delete</span>
                     </Button>
                   </div>
                 </TableCell>

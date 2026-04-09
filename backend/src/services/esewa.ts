@@ -210,7 +210,15 @@ export async function checkEsewaTransactionStatus(args: {
   url.searchParams.set('transaction_uuid', args.transactionUuid);
   try {
     const res = await axios.get(url.toString(), { timeout: 15_000 });
-    console.log('[eSewa status]', { transaction_uuid: args.transactionUuid, data: res.data });
+    if (
+      process.env.ESEWA_DEBUG === '1' ||
+      process.env.NODE_ENV !== 'production'
+    ) {
+      console.log('[eSewa status]', {
+        transaction_uuid: args.transactionUuid,
+        data: res.data,
+      });
+    }
     return res.data as Record<string, unknown>;
   } catch (e) {
     if (axios.isAxiosError(e)) {

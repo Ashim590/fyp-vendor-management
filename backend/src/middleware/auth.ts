@@ -7,6 +7,7 @@ import {
   setCachedAuthUser,
 } from "../utils/authUserCache";
 import { perfLabel } from "../utils/perfTiming";
+import { getJwtSecret } from "../config/secrets";
 
 export interface AuthRequest extends Request {
   user?: IUser;
@@ -77,8 +78,7 @@ export const authenticate = async (
   const token = authHeader.split(" ")[1];
 
   try {
-    const secret = process.env.JWT_SECRET || "dev_secret";
-    const payload = jwt.verify(token, secret) as { userId: string };
+    const payload = jwt.verify(token, getJwtSecret()) as { userId: string };
     const uid = String(payload.userId);
 
     const cached = getCachedAuthUser(uid);

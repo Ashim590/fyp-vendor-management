@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import axios from "axios";
 import {
   getVendorById,
   approveVendor,
   rejectVendor,
 } from "@/redux/vendorSlice";
+import { VENDOR_REVIEW_API_END_POINT } from "@/utils/constant";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -27,10 +29,22 @@ const VendorDetails = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((store) => store.auth);
   const canApprove = user?.role === "admin";
-  const { currentVendor: vendor, loading, error } = useSelector(
-    (store) => store.vendor
-  );
+  const canReviewVendor =
+    (user?.role === "admin" || user?.role === "staff") &&
+    user?.role !== "vendor";
+  const {
+    currentVendor: vendor,
+    loading,
+    error,
+  } = useSelector((store) => store.vendor);
   const [activeTab, setActiveTab] = useState("details");
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [scoreDelivery, setScoreDelivery] = useState("5");
+  const [scoreQuality, setScoreQuality] = useState("5");
+  const [scoreCommunication, setScoreCommunication] = useState("5");
+  const [reviewComment, setReviewComment] = useState("");
 
   useEffect(() => {
     if (id) {
@@ -44,6 +58,31 @@ const VendorDetails = () => {
     }
   }, [error]);
 
+  const loadReviews = useCallback(async () => {
+    if (!id) return;
+    setReviewsLoading(true);
+    try {
+      const res = await axios.get(
+        `${VENDOR_REVIEW_API_END_POINT}/vendor/${id}`,
+        { withCredentials: true },
+      );
+      setReviews(res.data?.reviews || []);
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "Could not load review history.",
+      );
+      setReviews([]);
+    } finally {
+      setReviewsLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (activeTab === "reviews" && id) {
+      loadReviews();
+    }
+  }, [activeTab, id, loadReviews]);
+
   const handleApprove = async () => {
     try {
       await dispatch(approveVendor(id)).unwrap();
@@ -54,12 +93,46 @@ const VendorDetails = () => {
     }
   };
 
+  const submitReview = async (e) => {
+    e.preventDefault();
+    if (!id || !canReviewVendor) return;
+    const d = Number(scoreDelivery);
+    const q = Number(scoreQuality);
+    const c = Number(scoreCommunication);
+    if (![d, q, c].every((n) => n >= 1 && n <= 5 && Number.isInteger(n))) {
+      toast.error("Scores must be whole numbers from 1 to 5.");
+      return;
+    }
+    setReviewSubmitting(true);
+    try {
+      await axios.post(
+        VENDOR_REVIEW_API_END_POINT,
+        {
+          vendorId: id,
+          deliveryScore: d,
+          qualityScore: q,
+          communicationScore: c,
+          comment: reviewComment.trim(),
+        },
+        { withCredentials: true },
+      );
+      toast.success("Review saved. Vendor rating updated.");
+      setReviewComment("");
+      loadReviews();
+      dispatch(getVendorById(id));
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Could not save review.");
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
   const handleReject = async () => {
     const reason = prompt("Enter rejection reason:");
     if (reason) {
       try {
         await dispatch(
-          rejectVendor({ vendorId: id, rejectionReason: reason })
+          rejectVendor({ vendorId: id, rejectionReason: reason }),
         ).unwrap();
         toast.success("Vendor rejected");
         dispatch(getVendorById(id));
@@ -93,11 +166,32 @@ const VendorDetails = () => {
     ));
   };
 
-  if (loading || !vendor) {
+  if (loading) {
     return (
       <div>
         <div className="max-w-7xl mx-auto p-6">
           <div className="text-center py-10">Loading vendor details...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!vendor || String(vendor._id) !== String(id)) {
+    return (
+      <div>
+        <div className="max-w-7xl mx-auto p-6">
+          <Link
+            to="/vendors"
+            className="flex items-center text-gray-600 hover:text-gray-900 mb-6"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Vendors
+          </Link>
+          <div className="text-center py-10 text-slate-600">
+            {error
+              ? String(error)
+              : "This vendor profile could not be loaded."}
+          </div>
         </div>
       </div>
     );
@@ -166,20 +260,22 @@ const VendorDetails = () => {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-4 mb-6 border-b">
-          {["details", "contact", "banking", "documents"].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`pb-2 px-1 capitalize ${
-                activeTab === tab
-                  ? "border-b-2 border-blue-600 text-blue-600 font-medium"
-                  : "text-gray-500"
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
+        <div className="flex gap-4 mb-6 border-b flex-wrap">
+          {["details", "contact", "banking", "documents", "reviews"].map(
+            (tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`pb-2 px-1 capitalize ${
+                  activeTab === tab
+                    ? "border-b-2 border-blue-600 text-blue-600 font-medium"
+                    : "text-gray-500"
+                }`}
+              >
+                {tab === "reviews" ? "Reviews" : tab}
+              </button>
+            ),
+          )}
         </div>
 
         {/* Tab Content */}
@@ -215,20 +311,30 @@ const VendorDetails = () => {
                   <div>
                     <label className="text-sm text-gray-500">Location</label>
                     <p className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4" />
+                      <MapPin className="h-4 w-4 shrink-0" />
                       {vendor.address || "Not provided"}
                     </p>
-                    <p className="mt-1 text-sm text-gray-600">
-                      {vendor.province || "—"} / {vendor.district || "—"}
-                    </p>
+                    {(vendor.province || vendor.district) && (
+                      <p className="mt-1 text-sm text-gray-600">
+                        {[vendor.district, vendor.province]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="text-sm text-gray-500">PAN Number</label>
                     <p>{vendor.panNumber || vendor.taxId || "Not provided"}</p>
                   </div>
                   <div>
-                    <label className="text-sm text-gray-500">Registration Number</label>
-                    <p>{vendor.registrationNumber || vendor.businessLicense || "Not provided"}</p>
+                    <label className="text-sm text-gray-500">
+                      Registration Number
+                    </label>
+                    <p>
+                      {vendor.registrationNumber ||
+                        vendor.businessLicense ||
+                        "Not provided"}
+                    </p>
                   </div>
                   <div>
                     <label className="text-sm text-gray-500">
@@ -353,6 +459,136 @@ const VendorDetails = () => {
                 )}
               </CardContent>
             </Card>
+          )}
+
+          {activeTab === "reviews" && (
+            <div className="md:col-span-2 space-y-6">
+              {canReviewVendor && vendor.status === "approved" && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Add performance review</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <form
+                      onSubmit={submitReview}
+                      className="space-y-4 max-w-xl"
+                    >
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-xs text-gray-500 block mb-1">
+                            Delivery
+                          </label>
+                          <select
+                            value={scoreDelivery}
+                            onChange={(e) => setScoreDelivery(e.target.value)}
+                            className="w-full border rounded-md px-2 py-1.5 text-sm"
+                          >
+                            {[1, 2, 3, 4, 5].map((n) => (
+                              <option key={n} value={n}>
+                                {n}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 block mb-1">
+                            Quality
+                          </label>
+                          <select
+                            value={scoreQuality}
+                            onChange={(e) => setScoreQuality(e.target.value)}
+                            className="w-full border rounded-md px-2 py-1.5 text-sm"
+                          >
+                            {[1, 2, 3, 4, 5].map((n) => (
+                              <option key={n} value={n}>
+                                {n}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 block mb-1">
+                            Communication
+                          </label>
+                          <select
+                            value={scoreCommunication}
+                            onChange={(e) =>
+                              setScoreCommunication(e.target.value)
+                            }
+                            className="w-full border rounded-md px-2 py-1.5 text-sm"
+                          >
+                            {[1, 2, 3, 4, 5].map((n) => (
+                              <option key={n} value={n}>
+                                {n}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">
+                          Comments (optional)
+                        </label>
+                        <textarea
+                          value={reviewComment}
+                          onChange={(e) => setReviewComment(e.target.value)}
+                          rows={3}
+                          className="w-full border rounded-md px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <Button type="submit" disabled={reviewSubmitting}>
+                        {reviewSubmitting ? "Saving…" : "Submit review"}
+                      </Button>
+                    </form>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Review history</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {reviewsLoading ? (
+                    <p className="text-sm text-gray-500">Loading…</p>
+                  ) : reviews.length === 0 ? (
+                    <p className="text-sm text-gray-500">No reviews yet.</p>
+                  ) : (
+                    <ul className="space-y-4">
+                      {reviews.map((r) => (
+                        <li
+                          key={r._id}
+                          className="border rounded-lg p-3 text-sm bg-gray-50/80"
+                        >
+                          <div className="flex flex-wrap gap-2 text-gray-700">
+                            <span>
+                              Delivery {r.deliveryScore}/5 · Quality{" "}
+                              {r.qualityScore}/5 · Communication{" "}
+                              {r.communicationScore}/5
+                            </span>
+                            <span className="text-gray-400">·</span>
+                            <span>
+                              {r.createdBy?.name || "Staff"} ·{" "}
+                              {r.createdAt
+                                ? new Date(r.createdAt).toLocaleString()
+                                : ""}
+                            </span>
+                          </div>
+                          {r.purchaseOrder?.orderNumber && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              PO {r.purchaseOrder.orderNumber}
+                            </p>
+                          )}
+                          {r.comment ? (
+                            <p className="mt-2 text-gray-800">{r.comment}</p>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           )}
         </div>
       </div>

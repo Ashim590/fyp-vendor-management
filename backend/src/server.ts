@@ -1,5 +1,9 @@
 /** Patches Express to forward rejected Promises from async route handlers to error middleware. */
 import 'express-async-errors';
+/** Side effect: wrap Notification.insertMany so optional SMTP emails fire (runs before routes). */
+import './utils/notificationInsertManyEmailPatch';
+import fs from 'fs';
+import path from 'path';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import type { Server } from 'http';
 import cors, { type CorsOptions } from 'cors';
@@ -30,6 +34,7 @@ import dashboardRoutes from './routes/dashboard.routes';
 import sessionRoutes from './routes/session.routes';
 import paymentRoutes from './routes/payment.routes';
 import invoicePaymentRoutes from './routes/invoicePayment.routes';
+import vendorReviewRoutes from './routes/vendorReview.routes';
 import { apiPerfLogMiddleware } from './middleware/apiPerfLog';
 
 dotenv.config();
@@ -46,10 +51,17 @@ if (process.env.NODE_ENV === 'production') {
 /** Avoid 304 Not Modified on JSON APIs — Axios treats 304 as an error by default. */
 app.set('etag', false);
 
-const MONGO_URI =
-  process.env.MONGO_URI || 'mongodb://localhost:27017/paropakar_vendornet';
 const PORT = Number(process.env.PORT) || 5000;
 const isProduction = process.env.NODE_ENV === 'production';
+
+if (isProduction && !process.env.MONGO_URI?.trim()) {
+  console.error('FATAL: MONGO_URI must be set in production (e.g. MongoDB Atlas connection string).');
+  process.exit(1);
+}
+
+const MONGO_URI =
+  process.env.MONGO_URI?.trim() ||
+  'mongodb://localhost:27017/paropakar_vendornet';
 
 const defaultClientOrigins =
   'http://localhost:5173,http://localhost:5174,http://localhost:5175';
@@ -101,9 +113,35 @@ app.use(morgan(isProduction ? 'tiny' : 'dev'));
 /** Optional: set API_PERF_LOG=1 for request timing + JSON response size in logs. */
 app.use(apiPerfLogMiddleware);
 
-if (isProduction && !process.env.JWT_SECRET) {
+if (isProduction && !process.env.JWT_SECRET?.trim()) {
   console.error('FATAL: JWT_SECRET must be set in production.');
   process.exit(1);
+}
+
+/**
+ * Broad API rate limit (Render/Railway). Set API_GLOBAL_RATE_LIMIT_MAX=0 to disable.
+ * Auth routes still use stricter per-path limits below.
+ */
+const globalLimitMax = parseInt(
+  process.env.API_GLOBAL_RATE_LIMIT_MAX ||
+    (isProduction ? '400' : '0'),
+  10,
+);
+if (globalLimitMax > 0) {
+  app.use(
+    '/api',
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: globalLimitMax,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { message: 'Too many requests, please try again later.' },
+      skip: (req) => {
+        const p = req.originalUrl.split('?')[0];
+        return req.method === 'OPTIONS' || p === '/api/health';
+      },
+    }),
+  );
 }
 
 function logDeployConfigHints() {
@@ -126,6 +164,14 @@ function logDeployConfigHints() {
   if (isProduction && (!backendUrl || !frontendUrl)) {
     console.warn(
       '[deploy] BACKEND_URL/FRONTEND_URL are not fully set. Payment callbacks and redirects may fail in production.',
+    );
+  }
+  if (
+    isProduction &&
+    String(process.env.ALLOW_BOOTSTRAP_ADMIN || '').toLowerCase() === 'true'
+  ) {
+    console.warn(
+      '[deploy] ALLOW_BOOTSTRAP_ADMIN=true — ensure bootstrap admin routes are not exposed long-term.',
     );
   }
 }
@@ -179,7 +225,35 @@ app.use('/api/v1/session', sessionRoutes);
 app.use('/api/v1/payment', paymentRoutes);
 app.use('/api/v1/invoice-payment', invoicePaymentRoutes);
 app.use('/api/v1/audit-log', auditLogRoutes);
+app.use('/api/v1/vendor-reviews', vendorReviewRoutes);
 app.use('/api/admin/vendors', adminVendorsRoutes);
+
+/**
+ * Optional: serve Vite build from the same process (Railway single service).
+ * Set CLIENT_DIST_PATH to absolute or repo-relative path containing index.html.
+ * For Vercel + Render split, leave unset.
+ */
+const clientDistPath = process.env.CLIENT_DIST_PATH?.trim();
+if (clientDistPath) {
+  const abs = path.resolve(clientDistPath);
+  const indexFile = path.join(abs, 'index.html');
+  if (fs.existsSync(indexFile)) {
+    app.use(
+      express.static(abs, {
+        index: false,
+        maxAge: isProduction ? '1h' : 0,
+      }),
+    );
+    app.get(/^\/(?!api\b).*/, (req, res, next) => {
+      if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+      res.sendFile(indexFile);
+    });
+  } else {
+    console.warn(
+      `[deploy] CLIENT_DIST_PATH=${abs} missing index.html — static hosting skipped.`,
+    );
+  }
+}
 
 function getHttpErrorStatus(err: unknown): number {
   if (err && typeof err === 'object' && 'status' in err) {
@@ -266,6 +340,13 @@ function shutdown(signal: string): void {
 
 process.once('SIGTERM', () => shutdown('SIGTERM'));
 process.once('SIGINT', () => shutdown('SIGINT'));
+
+mongoose.connection.on('disconnected', () => {
+  console.warn('MongoDB disconnected');
+});
+mongoose.connection.on('error', (err) => {
+  console.error('MongoDB connection error:', err);
+});
 
 mongoose
   .connect(MONGO_URI, mongoOptions)

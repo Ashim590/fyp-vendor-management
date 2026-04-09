@@ -26,7 +26,9 @@ import {
   WorkspaceToolbar,
   WorkspaceSegmentedControl,
   WORKSPACE_SELECT_CLASS,
+  WORKSPACE_DATA_TABLE_CLASS,
 } from "../layout/WorkspacePageLayout";
+import { cn } from "@/lib/utils";
 
 const Approvals = () => {
   const dispatch = useDispatch();
@@ -202,18 +204,30 @@ const Approvals = () => {
         </select>
       </WorkspaceToolbar>
 
-      <Table>
+      <Table className={cn(WORKSPACE_DATA_TABLE_CLASS, "table-fixed")}>
+        <colgroup>
+          <col className="w-[2%]" />
+          <col className="w-[19%]" />
+          <col className="w-[7%]" />
+          <col className="w-[11%]" />
+          <col className="w-[9%]" />
+          <col className="w-[10%]" />
+          <col className="w-[8%]" />
+          <col className="w-[8%]" />
+          <col className="w-[8%]" />
+          <col className="w-[18%]" />
+        </colgroup>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="w-10 text-center">S/N</TableHead>
-            <TableHead>Title</TableHead>
-            <TableHead>Type</TableHead>
-            <TableHead>Requester</TableHead>
-            <TableHead>Department</TableHead>
-            <TableHead>Amount</TableHead>
-            <TableHead>Priority</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Date</TableHead>
+            <TableHead className="text-center">S/N</TableHead>
+            <TableHead className="text-left">Title</TableHead>
+            <TableHead className="text-left">Type</TableHead>
+            <TableHead className="text-left">Requester</TableHead>
+            <TableHead className="text-left">Department</TableHead>
+            <TableHead className="text-left">Amount</TableHead>
+            <TableHead className="text-left">Priority</TableHead>
+            <TableHead className="text-left">Status</TableHead>
+            <TableHead className="text-left">Date</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -235,28 +249,30 @@ const Approvals = () => {
           ) : (
             filteredApprovals.map((approval, index) => (
               <TableRow key={approval._id}>
-                <TableCell className="w-10 text-center text-xs text-slate-500">
+                <TableCell className="min-w-0 text-center text-xs text-slate-500">
                   {index + 1}
                 </TableCell>
-                <TableCell className="max-w-[200px] font-medium text-slate-900">
-                  <span className="line-clamp-2">{approval.title}</span>
+                <TableCell className="min-w-0 font-medium text-slate-900">
+                  <span className="line-clamp-2 break-words">{approval.title}</span>
                 </TableCell>
-                <TableCell className="whitespace-nowrap capitalize text-slate-600">
+                <TableCell className="min-w-0 whitespace-nowrap capitalize text-slate-600">
                   {approval.entityType?.replace("_", " ")}
                 </TableCell>
-                <TableCell className="text-slate-700">{approval.requesterName}</TableCell>
-                <TableCell className="text-slate-600">
-                  {approval.requesterDepartment || "—"}
+                <TableCell className="min-w-0 text-slate-700">
+                  <span className="line-clamp-2 break-words">{approval.requesterName}</span>
                 </TableCell>
-                <TableCell className="whitespace-nowrap font-medium tabular-nums text-slate-900">
+                <TableCell className="min-w-0 text-slate-600">
+                  <span className="line-clamp-2 break-words">{approval.requesterDepartment || "—"}</span>
+                </TableCell>
+                <TableCell className="min-w-0 whitespace-nowrap font-medium tabular-nums text-slate-900">
                   {formatCurrency(approval.amount)}
                 </TableCell>
-                <TableCell>{getPriorityBadge(approval.priority)}</TableCell>
-                <TableCell>{getStatusBadge(approval.status)}</TableCell>
-                <TableCell className="whitespace-nowrap text-slate-600">
+                <TableCell className="min-w-0">{getPriorityBadge(approval.priority)}</TableCell>
+                <TableCell className="min-w-0">{getStatusBadge(approval.status)}</TableCell>
+                <TableCell className="min-w-0 whitespace-nowrap text-slate-600">
                   {formatDate(approval.createdAt)}
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell className="min-w-0 text-right">
                   <div className="flex flex-wrap justify-end gap-1.5">
                     <Button
                       variant="outline"

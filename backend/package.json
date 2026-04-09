@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "nodemon src/server.ts",
-    "dev:clean": "sh -c 'lsof -ti :3000 2>/dev/null | xargs kill -9 2>/dev/null; exec nodemon src/server.ts'",
+    "dev:clean": "sh -c 'lsof -ti :5001 2>/dev/null | xargs kill -9 2>/dev/null; lsof -ti :3000 2>/dev/null | xargs kill -9 2>/dev/null; exec nodemon src/server.ts'",
     "build": "tsc",
     "start": "node dist/server.js",
     "seed": "ts-node src/scripts/seedDefaultUsers.ts",

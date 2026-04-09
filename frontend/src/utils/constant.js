@@ -1,7 +1,7 @@
 /**
  * API base (no trailing slash).
- * - Omit VITE_API_BASE_URL in dev: requests use `/api/...` and Vite proxies to your backend (vite.config.js).
- * - Or set VITE_API_BASE_URL=http://localhost:3000 if the API runs there without a proxy.
+ * - Local dev: leave VITE_API_BASE_URL unset — requests use `/api/...` and Vite proxies (vite.config.js).
+ * - Production (Vercel): set VITE_API_BASE_URL to your Render/Railway API origin (e.g. https://api.example.com).
  */
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 const api = (path) => `${API_BASE}${path}`;
@@ -17,6 +17,8 @@ export const COMPANY_API_END_POINT = api("/api/v1/company");
 
 // VendorNet API End Points
 export const VENDOR_API_END_POINT = api("/api/v1/vendor");
+/** Transaction / performance reviews (procurement → vendor) */
+export const VENDOR_REVIEW_API_END_POINT = api("/api/v1/vendor-reviews");
 export const ADMIN_VENDORS_API_END_POINT = api("/api/admin/vendors");
 export const PURCHASE_REQUEST_API_END_POINT = api("/api/v1/purchase-request");
 export const QUOTATION_API_END_POINT = api("/api/v1/quotation");

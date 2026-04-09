@@ -113,10 +113,6 @@ const Signup = () => {
               <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 mb-1">
                 Register as a new vendor
               </h1>
-              <p className="text-xs sm:text-sm text-slate-500 max-w-md">
-                Submit your organization details for review. Admins and
-                procurement officers are created inside the system.
-              </p>
             </div>
             <form onSubmit={submitHandler} className="space-y-4 text-sm">
               <div>

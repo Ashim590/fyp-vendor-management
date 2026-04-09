@@ -8,6 +8,7 @@ import Bid from '../models/Bid';
 import Payment from '../models/Payment';
 import TenderClarification from '../models/TenderClarification';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
+import { buildQuotationComparison } from '../utils/quotationComparison';
 import { createAudit } from '../utils/auditLog';
 import { vendorMayAccessMarketplace } from '../utils/vendorGate';
 import {
@@ -131,7 +132,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
       typeof req.query.cursor === 'string' ? req.query.cursor : undefined;
     const filter: Record<string, unknown> = {};
 
-    // Vendors can only access verified vendor accounts + published tenders.
+    // Vendors: verified accounts; list split into open (published) vs history (closed/awarded they joined).
     if (req.user?.role === 'VENDOR') {
       const mayBid = await vendorMayAccessMarketplace(req.user.vendorProfile);
       if (!mayBid) {
@@ -143,8 +144,36 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
         });
       }
 
-      // Enforce published-only visibility for vendors.
-      filter.status = 'PUBLISHED';
+      const vendorScope =
+        typeof req.query.scope === 'string' && req.query.scope === 'previous'
+          ? 'previous'
+          : 'active';
+
+      if (vendorScope === 'previous') {
+        const vid = refId(req.user.vendorProfile);
+        if (!vid || !mongoose.isValidObjectId(vid)) {
+          return res.json({
+            tenders: [],
+            success: true,
+            nextCursor: null,
+            hasMore: false,
+          });
+        }
+        const vendorOid = new mongoose.Types.ObjectId(vid);
+        const tenderIds = await Bid.distinct('tender', { vendor: vendorOid });
+        if (!tenderIds.length) {
+          return res.json({
+            tenders: [],
+            success: true,
+            nextCursor: null,
+            hasMore: false,
+          });
+        }
+        filter._id = { $in: tenderIds };
+        filter.status = { $in: ['CLOSED', 'AWARDED'] };
+      } else {
+        filter.status = 'PUBLISHED';
+      }
     } else if (status && typeof status === 'string') {
       filter.status = status;
     }
@@ -321,6 +350,72 @@ router.delete(
   }
 );
 
+/**
+ * Automated quotation comparison for staff: lowest price, fastest stated delivery, weighted “best value” (price + delivery + vendor rating).
+ */
+router.get(
+  '/:id/quotation-comparison',
+  authenticate,
+  authorize(['PROCUREMENT_OFFICER', 'ADMIN']),
+  async (req: AuthRequest, res) => {
+    try {
+      const tender = await Tender.findById(req.params.id).select('_id title referenceNumber status');
+      if (!tender) {
+        return res.status(404).json({ message: 'Tender not found', success: false });
+      }
+
+      const bids = await Bid.find({
+        tender: tender._id,
+        status: { $in: ['SUBMITTED', 'UNDER_REVIEW', 'ACCEPTED'] },
+      })
+        .populate('vendor', 'name rating preferredSupplier')
+        .select('amount deliveryDaysOffer status vendor')
+        .lean();
+
+      const inputs = bids.map((b: any) => {
+        const v = b.vendor;
+        const vid = v?._id ? String(v._id) : String(b.vendor);
+        return {
+          bidId: String(b._id),
+          vendorId: vid,
+          vendorName: String(v?.name || 'Vendor'),
+          amount: Number(b.amount) || 0,
+          deliveryDaysOffer:
+            b.deliveryDaysOffer != null && Number.isFinite(Number(b.deliveryDaysOffer))
+              ? Number(b.deliveryDaysOffer)
+              : undefined,
+          rating: typeof v?.rating === 'number' ? v.rating : 0,
+          preferredSupplier: !!v?.preferredSupplier,
+          status: String(b.status),
+        };
+      });
+
+      const comparisons = buildQuotationComparison(inputs).sort(
+        (a, b) => b.valueScore - a.valueScore,
+      );
+
+      return res.json({
+        success: true,
+        tenderId: String(tender._id),
+        title: tender.title,
+        referenceNumber: tender.referenceNumber,
+        tenderStatus: tender.status,
+        meta: {
+          bidCount: comparisons.length,
+          weights: { price: 0.45, delivery: 0.25, rating: 0.25, preferredBonus: 0.05 },
+        },
+        comparisons,
+      });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({
+        message: 'Failed to build quotation comparison',
+        success: false,
+      });
+    }
+  },
+);
+
 router.get('/:id', authenticate, async (req: AuthRequest, res) => {
   try {
     const tender = await Tender.findById(req.params.id)
@@ -345,7 +440,23 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
         awardedVendorId &&
         vendorProfileId === awardedVendorId;
 
-      if (tender.status !== 'PUBLISHED' && !isOwnAwardedTender) {
+      const participated =
+        vendorProfileId &&
+        mongoose.isValidObjectId(vendorProfileId) &&
+        (await Bid.exists({
+          tender: tender._id,
+          vendor: new mongoose.Types.ObjectId(vendorProfileId),
+        }));
+
+      const mayViewClosedHistory =
+        !!participated &&
+        (tender.status === 'CLOSED' || tender.status === 'AWARDED');
+
+      if (
+        tender.status !== 'PUBLISHED' &&
+        !isOwnAwardedTender &&
+        !mayViewClosedHistory
+      ) {
         return res.status(404).json({ message: 'Tender not found', success: false });
       }
     }
@@ -376,10 +487,24 @@ router.get('/:id/clarifications', authenticate, async (req: AuthRequest, res) =>
 
     if (role === 'VENDOR') {
       const mayBid = await vendorMayAccessMarketplace(req.user?.vendorProfile);
-      if (!mayBid && !isOwnAwardedTender) {
+      const participated =
+        vendorProfileId &&
+        mongoose.isValidObjectId(vendorProfileId) &&
+        (await Bid.exists({
+          tender: tender._id,
+          vendor: new mongoose.Types.ObjectId(vendorProfileId),
+        }));
+      const mayViewHistory =
+        !!participated &&
+        (tender.status === 'CLOSED' || tender.status === 'AWARDED');
+      if (!mayBid && !isOwnAwardedTender && !mayViewHistory) {
         return res.status(404).json({ message: 'Tender not found', success: false });
       }
-      if (tender.status !== 'PUBLISHED' && !isOwnAwardedTender) {
+      if (
+        tender.status !== 'PUBLISHED' &&
+        !isOwnAwardedTender &&
+        !mayViewHistory
+      ) {
         return res.status(404).json({ message: 'Tender not found', success: false });
       }
     }

@@ -24,8 +24,10 @@ import {
   WorkspacePageHeader,
   WorkspaceToolbar,
   WORKSPACE_SELECT_CLASS,
+  WORKSPACE_DATA_TABLE_CLASS,
 } from "../layout/WorkspacePageLayout";
 import { ConfirmDialog } from "../ui/confirm-dialog";
+import { cn } from "@/lib/utils";
 
 const PurchaseRequestList = () => {
   const dispatch = useDispatch();
@@ -372,11 +374,41 @@ const PurchaseRequestList = () => {
         onConfirm={permanentDeleteBulkSelected}
       />
 
-      <Table>
+      <Table
+            className={cn(WORKSPACE_DATA_TABLE_CLASS, "table-fixed")}
+          >
+            {(isAdmin || isStaff) ? (
+              <colgroup>
+                <col className="w-[3%]" />
+                <col className="w-[3%]" />
+                <col className="w-[7%]" />
+                <col className="w-[26%]" />
+                <col className="w-[11%]" />
+                <col className="w-[6%]" />
+                <col className="w-[10%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[8%]" />
+                <col className="w-[12%]" />
+              </colgroup>
+            ) : (
+              <colgroup>
+                <col className="w-[4%]" />
+                <col className="w-[8%]" />
+                <col className="w-[28%]" />
+                <col className="w-[12%]" />
+                <col className="w-[6%]" />
+                <col className="w-[11%]" />
+                <col className="w-[7%]" />
+                <col className="w-[8%]" />
+                <col className="w-[9%]" />
+                <col className="w-[7%]" />
+              </colgroup>
+            )}
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 {(isAdmin || isStaff) && (
-                  <TableHead className="w-10 text-center">
+                  <TableHead className="text-center">
                     {selectableFiltered.length > 0 ? (
                       <input
                         type="checkbox"
@@ -387,16 +419,16 @@ const PurchaseRequestList = () => {
                     ) : null}
                   </TableHead>
                 )}
-                <TableHead className="w-10 text-center">S/N</TableHead>
-                <TableHead>Request #</TableHead>
-                <TableHead>Title</TableHead>
-                <TableHead>Department</TableHead>
-                <TableHead>Items</TableHead>
-                <TableHead>Estimated Amount</TableHead>
-                <TableHead>Priority</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Required Date</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead className="text-center">S/N</TableHead>
+                <TableHead className="text-left">Request #</TableHead>
+                <TableHead className="text-left">Title</TableHead>
+                <TableHead className="text-left">Department</TableHead>
+                <TableHead className="text-left">Items</TableHead>
+                <TableHead className="text-right">Estimated Amount</TableHead>
+                <TableHead className="text-left">Priority</TableHead>
+                <TableHead className="text-left">Status</TableHead>
+                <TableHead className="text-left">Required Date</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -429,39 +461,50 @@ const PurchaseRequestList = () => {
                         ) : null}
                       </TableCell>
                     )}
-                    <TableCell className="w-10 text-center text-xs text-slate-500">
+                    <TableCell className="min-w-0 text-center text-xs text-slate-500">
                       {index + 1}
                     </TableCell>
-                    <TableCell className="font-medium">
+                    <TableCell
+                      className="min-w-0 truncate font-semibold tabular-nums text-slate-900"
+                      title={pr.requestNumber}
+                    >
                       {pr.requestNumber}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-0">
                       {trashView ? (
-                        <span className="text-slate-800">{pr.title}</span>
+                        <span className="line-clamp-2 break-words text-slate-800">
+                          {pr.title}
+                        </span>
                       ) : (
                         <Link
                           to={`/procurement/requests/${pr._id}`}
-                          className="hover:underline"
+                          className="line-clamp-2 break-words text-slate-800 hover:underline"
                         >
                           {pr.title}
                         </Link>
                       )}
                     </TableCell>
-                    <TableCell>{pr.department}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <FileText className="h-4 w-4 text-gray-400" />
-                        {pr.itemsCount ?? pr.items?.length ?? 0} items
+                    <TableCell className="min-w-0 text-slate-700">
+                      <span className="line-clamp-2 break-words">{pr.department}</span>
+                    </TableCell>
+                    <TableCell className="min-w-0 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                        <span>
+                          {pr.itemsCount ?? pr.items?.length ?? 0} items
+                        </span>
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-0 whitespace-nowrap text-right tabular-nums font-medium text-slate-900">
                       {formatCurrency(pr.totalEstimatedAmount)}
                     </TableCell>
-                    <TableCell>{getPriorityBadge(pr.priority)}</TableCell>
-                    <TableCell>{getStatusBadge(pr.status)}</TableCell>
-                    <TableCell>{formatDate(pr.requiredDate)}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
+                    <TableCell className="min-w-0">{getPriorityBadge(pr.priority)}</TableCell>
+                    <TableCell className="min-w-0">{getStatusBadge(pr.status)}</TableCell>
+                    <TableCell className="min-w-0 whitespace-nowrap text-slate-700">
+                      {formatDate(pr.requiredDate)}
+                    </TableCell>
+                    <TableCell className="min-w-0 text-right">
+                      <div className="flex flex-wrap justify-end gap-1">
                         {!trashView && (
                           <Link to={`/procurement/requests/${pr._id}`}>
                             <Button variant="outline" size="sm">

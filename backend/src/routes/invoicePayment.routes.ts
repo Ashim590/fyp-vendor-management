@@ -15,6 +15,7 @@ import {
   decodeEsewaCallbackData,
   checkEsewaTransactionStatus,
 } from "../services/esewa";
+import { invalidateStaffSummaryCache } from "../utils/staffDashboardCache";
 
 const router = Router();
 
@@ -256,6 +257,7 @@ router.all("/esewa/success", async (req: AuthRequest, res: Response) => {
       );
       payment.verifiedAt = new Date();
       await payment.save();
+      invalidateStaffSummaryCache();
 
       const invoice = await ensureInvoiceForPaidInvoicePayment(payment);
       const payFresh = await InvoicePayment.findById(payment._id);

@@ -3,10 +3,13 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 const Table = React.forwardRef(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto rounded-2xl border border-slate-200/90 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
+  <div className="relative w-full max-w-full overflow-x-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
     <table
       ref={ref}
-      className={cn("w-full caption-bottom text-sm", className)}
+      className={cn(
+        "w-full min-w-0 border-collapse caption-bottom text-sm",
+        className,
+      )}
       {...props} />
   </div>
 ))
@@ -55,7 +58,7 @@ const TableHead = React.forwardRef(({ className, ...props }, ref) => (
   <th
     ref={ref}
     className={cn(
-      "h-11 px-4 text-left align-middle text-xs font-semibold uppercase tracking-[0.06em] text-slate-500 [&:has([role=checkbox])]:pr-0",
+      "h-11 px-3 text-left align-middle text-xs font-semibold uppercase tracking-[0.06em] text-slate-500 sm:px-4 [&:has([role=checkbox])]:pr-0",
       className
     )}
     {...props} />
@@ -66,7 +69,7 @@ const TableCell = React.forwardRef(({ className, ...props }, ref) => (
   <td
     ref={ref}
     className={cn(
-      "px-4 py-3 align-middle text-slate-800 [&:has([role=checkbox])]:pr-0",
+      "px-3 py-3 align-middle text-slate-800 sm:px-4 sm:py-3.5 [&:has([role=checkbox])]:pr-0",
       className,
     )}
     {...props} />
