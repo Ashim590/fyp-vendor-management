@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { useDispatch, useSelector } from "react-redux";
 import { setLoading, setUser, setToken } from "@/redux/authSlice";
 import { persistor } from "@/redux/store";
-import { Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 const Login = () => {
   const [input, setInput] = useState({
@@ -18,6 +18,7 @@ const Login = () => {
     password: "",
     role: "",
   });
+  const [showPassword, setShowPassword] = useState(false);
   const { loading, user } = useSelector((store) => store.auth);
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -139,14 +140,28 @@ const Login = () => {
               </div>
               <div>
                 <Label className="text-xs">Password</Label>
-                <Input
-                  type="password"
-                  value={input.password}
-                  name="password"
-                  onChange={changeEventHandler}
-                  placeholder="Enter your password"
-                  className="mt-1 text-sm"
-                />
+                <div className="relative mt-1">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    value={input.password}
+                    name="password"
+                    onChange={changeEventHandler}
+                    placeholder="Enter your password"
+                    className="pr-10 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
               <div>
                 <Label className="text-xs block mb-1">Login as</Label>
