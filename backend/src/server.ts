@@ -91,7 +91,10 @@ app.use(
  * CORS: allow only listed origins; allow requests with no Origin (curl, mobile apps, server-to-server).
  */
 const corsOptions: CorsOptions = {
-  origin(origin, callback) {
+  origin(
+    origin: string | undefined,
+    callback: (err: Error | null, allow?: boolean) => void,
+  ) {
     if (!origin) {
       callback(null, true);
       return;
