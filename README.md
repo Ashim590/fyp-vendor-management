@@ -36,6 +36,7 @@ From the repo root, run `npm install` once (installs `npm-run-all`), then `npm r
 - Backend (Render):
   - Blueprint is included at `render.yaml` (root).
   - Service root directory is `backend`.
+  - **Node.js:** use **20** (see `.nvmrc`, `engines` in `package.json` files, and `NODE_VERSION` in `render.yaml`). On a manually created service, add env var `NODE_VERSION=20`.
   - Build command: `npm install --include=dev && npm run build` (required when `NODE_ENV=production` so TypeScript and types install)
   - Start command: `npm run start`
   - Health check path: `/api/health`

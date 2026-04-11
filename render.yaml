@@ -10,6 +10,9 @@ services:
     startCommand: npm run start
     healthCheckPath: /api/health
     envVars:
+      # https://render.com/docs/node-version — matches .nvmrc / package engines
+      - key: NODE_VERSION
+        value: "20"
       - key: NODE_ENV
         value: production
       - key: PORT
