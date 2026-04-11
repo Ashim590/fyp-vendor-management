@@ -209,6 +209,17 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
+/** Friendly root when API-only (e.g. Render); skip if CLIENT_DIST_PATH serves the SPA. */
+if (!process.env.CLIENT_DIST_PATH?.trim()) {
+  app.get('/', (_req, res) => {
+    res.json({
+      service: 'Paropakar VendorNet API',
+      message: 'JSON API — routes are under /api and /api/v1.',
+      health: '/api/health',
+    });
+  });
+}
+
 /**
  * Route versioning: `/api/v1/*` is what the current frontend uses.
  * `/api/*` (without v1) remains mounted for older clients or direct testing — same router instances.
