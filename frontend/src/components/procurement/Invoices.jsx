@@ -21,8 +21,11 @@ import {
   TableRow,
 } from "../ui/table";
 import { toast } from "sonner";
+import { LoadingState } from "../ui/loading-state";
+import { SESSION_ROLE } from "@/constants/userRoles";
 import { Search, Eye, Receipt } from "lucide-react";
 import { downloadInvoicePdf } from "@/utils/invoicePdf";
+import { getApiErrorMessage } from "@/utils/apiError";
 import {
   WorkspacePageLayout,
   WorkspacePageHeader,
@@ -54,7 +57,7 @@ const Invoices = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [reconcileBusy, setReconcileBusy] = useState(false);
 
-  const isStaff = user?.role === "staff";
+  const isStaff = user?.role === SESSION_ROLE.PROCUREMENT_OFFICER;
 
   useEffect(() => {
     dispatch(getAllInvoices({ limit: 40 }));
@@ -111,9 +114,7 @@ const Invoices = () => {
       downloadInvoicePdf(inv);
     } catch (err) {
       toast.error(
-        err?.response?.data?.message ||
-          err?.message ||
-          "Could not prepare PDF (load invoice first).",
+        getApiErrorMessage(err, "Could not prepare PDF (load invoice first)."),
       );
     }
   };
@@ -133,11 +134,7 @@ const Invoices = () => {
       if (data?.invoice) setDetailInvoice(data.invoice);
       else toast.error("Could not load invoice details.");
     } catch (err) {
-      toast.error(
-        err?.response?.data?.message ||
-          err?.message ||
-          "Could not load invoice.",
-      );
+      toast.error(getApiErrorMessage(err, "Could not load invoice."));
       setDetailOpen(false);
     } finally {
       setDetailLoading(false);
@@ -188,11 +185,7 @@ const Invoices = () => {
       toast.success("Payment record created.");
       dispatch(getAllInvoices({ limit: 40 }));
     } catch (err) {
-      toast.error(
-        err?.response?.data?.message ||
-          err?.message ||
-          "Could not create payment.",
-      );
+      toast.error(getApiErrorMessage(err, "Could not create payment."));
     } finally {
       setInvoicePayBusy((s) => ({ ...s, [invoiceId]: null }));
     }
@@ -229,11 +222,7 @@ const Invoices = () => {
         payload: data.payload,
       });
     } catch (err) {
-      toast.error(
-        err?.response?.data?.message ||
-          err?.message ||
-          "Could not start eSewa.",
-      );
+      toast.error(getApiErrorMessage(err, "Could not start eSewa."));
     } finally {
       setInvoicePayBusy((s) => ({ ...s, [invoiceId]: null }));
     }
@@ -259,7 +248,7 @@ const Invoices = () => {
             </DialogDescription>
           </DialogHeader>
           {detailLoading && (
-            <p className="text-sm text-slate-600">Loading invoice…</p>
+            <LoadingState variant="compact" label="Loading invoice…" />
           )}
           {!detailLoading && detailInvoice && (
             <div className="space-y-4 text-sm">
@@ -436,8 +425,8 @@ const Invoices = () => {
         <TableBody>
           {loading ? (
             <TableRow>
-              <TableCell colSpan={9} className="py-8 text-center text-slate-500">
-                Loading…
+              <TableCell colSpan={9} className="p-0">
+                <LoadingState variant="table" />
               </TableCell>
             </TableRow>
           ) : filteredInvoices.length === 0 ? (
@@ -480,9 +469,7 @@ const Invoices = () => {
                             dispatch(getAllInvoices({ limit: 40 }));
                           } catch (e) {
                             toast.error(
-                              e?.response?.data?.message ||
-                                e?.message ||
-                                "Could not run backfill.",
+                              getApiErrorMessage(e, "Could not run backfill."),
                             );
                           } finally {
                             setReconcileBusy(false);

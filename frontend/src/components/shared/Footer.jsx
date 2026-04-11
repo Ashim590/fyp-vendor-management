@@ -19,7 +19,7 @@ const Footer = () => {
 
   return (
     <footer className="mt-auto shrink-0 border-t border-[#17366f] bg-[#0b1f4d] text-slate-200">
-      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-10 pb-[max(2.5rem,env(safe-area-inset-bottom,0px))] sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
           <section>
             <div className="flex items-center gap-2">
@@ -63,11 +63,11 @@ const Footer = () => {
             <ul className="mt-3 space-y-2 text-sm text-slate-300">
               <li className="flex items-start gap-2">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#5eead4]" />
-                <span>Kathmandu, Nepal</span>
+                <span>Nayagau, Pokhara</span>
               </li>
               <li className="flex items-start gap-2">
                 <Phone className="mt-0.5 h-4 w-4 shrink-0 text-[#5eead4]" />
-                <span>+977-1-0000000</span>
+                <span>9713680380</span>
               </li>
               <li className="flex items-start gap-2">
                 <Mail className="mt-0.5 h-4 w-4 shrink-0 text-[#5eead4]" />

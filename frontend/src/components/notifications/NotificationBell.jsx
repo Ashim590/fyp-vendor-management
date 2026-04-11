@@ -1,15 +1,16 @@
 import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import { Bell, Check, X } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
+import { Bell } from "lucide-react";
+import { EmptyState } from "../ui/empty-state";
+import { LoadingState } from "../ui/loading-state";
 import { cn } from "@/lib/utils";
 import { useNotificationSummary } from "@/context/NotificationSummaryContext";
+import { NotificationListRow } from "./NotificationListRow";
 
 /**
- * Bell shows recent notifications (unread + read). Opening a linked notification marks it as read.
- *
- * @param {{ variant?: "default" | "onDark" }} props
+ * Navbar bell: a quick slice of the same list as /notifications, tuned for the popover.
+ * Linked items mark as read on navigation; nothing is deleted here so history stays intact.
  */
 const NotificationBell = ({ variant = "default" }) => {
   const onDark = variant === "onDark";
@@ -20,7 +21,6 @@ const NotificationBell = ({ variant = "default" }) => {
     refresh,
     markAsRead,
     markAllRead,
-    dismissNotification,
   } = useNotificationSummary();
   const [open, setOpen] = useState(false);
 
@@ -28,32 +28,6 @@ const NotificationBell = ({ variant = "default" }) => {
     () => notifications.slice(0, 20),
     [notifications],
   );
-
-  const handleMarkRead = (e, id) => {
-    e.preventDefault();
-    e.stopPropagation();
-    markAsRead(id);
-  };
-
-  const handleOpenNotification = (id) => {
-    if (id != null) markAsRead(id);
-    setOpen(false);
-  };
-
-  const handleDismiss = (e, id) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dismissNotification(id);
-  };
-
-  const targetFor = (n) => {
-    const raw = String(n?.link || "").trim();
-    if (n?.type === "bid_accepted") {
-      const bidParam = raw.match(/[?&]openBid=([a-f\d]{24})/i)?.[1];
-      return bidParam ? `/my-bids?openBid=${bidParam}` : "/my-bids";
-    }
-    return raw;
-  };
 
   return (
     <Popover
@@ -99,7 +73,7 @@ const NotificationBell = ({ variant = "default" }) => {
               Notifications
             </span>
             <p className="mt-0.5 text-[11px] leading-snug text-slate-500">
-              Opening marks as read. Dismiss removes it from your list.
+              Unread items are highlighted. Opening a link marks it read — history is kept for audit.
             </p>
           </div>
           {unreadCount > 0 && (
@@ -114,120 +88,25 @@ const NotificationBell = ({ variant = "default" }) => {
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2">
           {loading ? (
-            <p className="py-8 text-center text-sm font-medium text-slate-500">
-              Loading…
-            </p>
+            <LoadingState variant="compact" />
           ) : recentList.length === 0 ? (
-            <p className="px-2 py-8 text-center text-sm text-slate-600">
-              No notifications yet.
-            </p>
+            <EmptyState
+              compact
+              icon={Bell}
+              title="No notifications yet"
+              description="Alerts for tenders, approvals, and deliveries will show here."
+            />
           ) : (
             <ul className="space-y-1.5">
-              <AnimatePresence initial={false} mode="popLayout">
-                {recentList.map((n) => (
-                  <motion.li
-                    key={n._id}
-                    layout
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{
-                      opacity: 0,
-                      height: 0,
-                      marginTop: 0,
-                      marginBottom: 0,
-                      paddingTop: 0,
-                      paddingBottom: 0,
-                    }}
-                    transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-                    className="overflow-hidden"
-                  >
-                    <div
-                      className={cn(
-                        "flex gap-1 rounded-lg py-2 pl-2 pr-1",
-                        !n.read
-                          ? "border-l-4 border-teal-500 bg-teal-50/90 hover:bg-teal-100/90"
-                          : "border-l-4 border-slate-200 bg-slate-50/80 hover:bg-slate-100/80",
-                      )}
-                    >
-                      <div className="min-w-0 flex-1">
-                        {targetFor(n) && targetFor(n) !== "#" ? (
-                          <Link
-                            to={targetFor(n)}
-                            onClick={() => handleOpenNotification(n._id)}
-                            className="block rounded-md px-2 py-1 text-left outline-none ring-teal-600 focus-visible:ring-2"
-                          >
-                            <p
-                              className={cn(
-                                "text-sm leading-snug",
-                                n.read
-                                  ? "font-medium text-slate-700"
-                                  : "font-semibold text-slate-900",
-                              )}
-                            >
-                              {n.title}
-                            </p>
-                            {n.body && (
-                              <p
-                                className={cn(
-                                  "mt-1 text-sm leading-relaxed line-clamp-3",
-                                  n.read ? "text-slate-500" : "text-slate-600",
-                                )}
-                              >
-                                {n.body}
-                              </p>
-                            )}
-                          </Link>
-                        ) : (
-                          <div className="px-2 py-1">
-                            <p
-                              className={cn(
-                                "text-sm leading-snug",
-                                n.read
-                                  ? "font-medium text-slate-700"
-                                  : "font-semibold text-slate-900",
-                              )}
-                            >
-                              {n.title}
-                            </p>
-                            {n.body && (
-                              <p
-                                className={cn(
-                                  "mt-1 text-sm leading-relaxed line-clamp-3",
-                                  n.read ? "text-slate-500" : "text-slate-600",
-                                )}
-                              >
-                                {n.body}
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      {!n.read && (
-                        <div className="flex shrink-0 flex-col items-center justify-start gap-0.5 border-l border-teal-200/80 pl-1">
-                        <button
-                          type="button"
-                          aria-label="Mark as read"
-                          title="Mark as read"
-                          onClick={(e) => handleMarkRead(e, n._id)}
-                          className="rounded-md p-1.5 text-teal-800 transition-colors hover:bg-teal-200/80 hover:text-teal-950"
-                        >
-                          <Check className="h-4 w-4" strokeWidth={2.5} />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Dismiss notification"
-                          title="Dismiss"
-                          onClick={(e) => handleDismiss(e, n._id)}
-                          className="rounded-md p-1.5 text-slate-600 transition-colors hover:bg-slate-200/90 hover:text-slate-900"
-                        >
-                          <X className="h-4 w-4" strokeWidth={2.25} />
-                        </button>
-                        </div>
-                      )}
-                    </div>
-                  </motion.li>
-                ))}
-              </AnimatePresence>
+              {recentList.map((n) => (
+                <NotificationListRow
+                  key={n._id}
+                  n={n}
+                  variant="popover"
+                  onMarkRead={markAsRead}
+                  onAfterNavigate={() => setOpen(false)}
+                />
+              ))}
             </ul>
           )}
         </div>

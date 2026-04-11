@@ -18,14 +18,15 @@ export async function ensureDeliveryForTenderPayment(payment: IPayment): Promise
     tender: payment.tender,
     orderReference: payment.paymentNumber || String(payment._id),
     purchaseOrderNumber: payment.paymentNumber || '',
+    orderRef: payment.paymentNumber || String(payment._id),
     vendor: payment.vendor,
     vendorName: payment.vendorName,
     items: [],
     expectedDate,
-    status: 'pending',
+    status: 'PENDING',
     statusHistory: [
       {
-        status: 'pending',
+        status: 'PENDING',
         note: 'Delivery record created after payment completed',
         at: new Date()
       }
@@ -59,14 +60,15 @@ export async function ensureDeliveryForInvoicePayment(
     invoicePayment: invPay._id,
     orderReference: invoice.invoiceNumber || String(invPay._id),
     purchaseOrderNumber: invoice.purchaseOrderNumber || invoice.invoiceNumber || '',
+    orderRef: invoice.invoiceNumber || String(invPay._id),
     vendor: invoice.vendor,
     vendorName: invoice.vendorName,
     items: plainItems,
     expectedDate,
-    status: 'pending',
+    status: 'PENDING',
     statusHistory: [
       {
-        status: 'pending',
+        status: 'PENDING',
         note: 'Delivery record created after invoice payment',
         at: new Date()
       }

@@ -19,7 +19,7 @@ export type StaffTopVendor = {
 /** Same shape as GET /dashboard/summary for staff roles. */
 export type StaffDashboardBody = {
   success: true;
-  kind: 'staff';
+  kind: 'procurement_officer';
   activeTenders: number;
   pendingPayments: number;
   totalSpend: number;
@@ -150,7 +150,16 @@ export async function computeStaffDashboardBody(): Promise<StaffDashboardBody> {
     Delivery.aggregate([
       {
         $match: {
-          status: { $in: ['delivered', 'received', 'inspected'] },
+          status: {
+            $in: [
+              'READY_FOR_CONFIRMATION',
+              'VERIFIED',
+              'INSPECTED',
+              'delivered',
+              'received',
+              'inspected',
+            ],
+          },
           actualDate: { $exists: true, $ne: null, $gte: since },
           expectedDate: { $exists: true, $ne: null },
         },
@@ -171,7 +180,16 @@ export async function computeStaffDashboardBody(): Promise<StaffDashboardBody> {
     Delivery.countDocuments({
       expectedDate: { $gte: dayStart, $lt: dayEnd },
       status: {
-        $in: ['pending', 'shipped', 'in_transit', 'delivered'],
+        $in: [
+          'PENDING',
+          'ACCEPTED',
+          'IN_TRANSIT',
+          'READY_FOR_CONFIRMATION',
+          'pending',
+          'shipped',
+          'in_transit',
+          'delivered',
+        ],
       },
     }),
     Payment.countDocuments({ status: 'Pending' }),
@@ -245,7 +263,7 @@ export async function computeStaffDashboardBody(): Promise<StaffDashboardBody> {
 
   return {
     success: true,
-    kind: 'staff',
+    kind: 'procurement_officer',
     activeTenders,
     pendingPayments,
     totalSpend: monthlySpendNpr,

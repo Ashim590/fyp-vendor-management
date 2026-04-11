@@ -9,6 +9,7 @@ import axios from 'axios'
 import { USER_API_END_POINT } from '@/utils/constant'
 import { setUser } from '@/redux/authSlice'
 import { toast } from 'sonner'
+import { getApiErrorMessage } from '@/utils/apiError'
 
 const UpdateProfileDialog = ({ open, setOpen }) => {
     const [loading, setLoading] = useState(false);
@@ -57,7 +58,7 @@ const UpdateProfileDialog = ({ open, setOpen }) => {
                 toast.success(res.data.message);
             }
         } catch (error) {
-            toast.error(error?.response?.data?.message || "Update failed.");
+            toast.error(getApiErrorMessage(error, "Update failed."));
         } finally{
             setLoading(false);
         }

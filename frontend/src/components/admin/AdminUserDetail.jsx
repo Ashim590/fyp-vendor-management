@@ -2,8 +2,10 @@ import React from "react";
 import axios from "axios";
 import { useSelector } from "react-redux";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { AUTH_API_END_POINT } from "@/utils/constant";
+import { AUTH_API_END_POINT, getVendorCategoryLabel } from "@/utils/constant";
 import { Button } from "../ui/button";
+import { LoadingState } from "../ui/loading-state";
+import { getApiErrorMessage } from "@/utils/apiError";
 import { toast } from "sonner";
 
 const AdminUserDetail = () => {
@@ -37,7 +39,7 @@ const AdminUserDetail = () => {
         });
       }
     } catch (err) {
-      toast.error(err?.response?.data?.message || "Failed to load user details.");
+      toast.error(getApiErrorMessage(err, "Failed to load user details."));
       navigate("/admin/users", { replace: true });
     } finally {
       setLoading(false);
@@ -80,9 +82,7 @@ const AdminUserDetail = () => {
       }
       toast.success("Officer updated.");
     } catch (err) {
-      toast.error(
-        err?.response?.data?.message || "Failed to save officer details.",
-      );
+      toast.error(getApiErrorMessage(err, "Failed to save officer details."));
     } finally {
       setSavingDetail(false);
     }
@@ -103,7 +103,7 @@ const AdminUserDetail = () => {
       <section className="bg-white rounded-2xl border border-slate-200 shadow-sm px-5 py-4">
         <h1 className="text-sm font-semibold text-slate-900 mb-3">User details</h1>
         {loading ? (
-          <p className="text-xs text-slate-500">Loading details...</p>
+          <LoadingState variant="inline" label="Loading details…" />
         ) : !detailUser ? (
           <p className="text-xs text-slate-500">No user loaded.</p>
         ) : detailUser.role === "VENDOR" ? (
@@ -160,7 +160,9 @@ const AdminUserDetail = () => {
                     <div>
                       <p className="text-slate-500">Category</p>
                       <p className="text-slate-800">
-                        {detailUser.vendorProfile.category || "—"}
+                        {getVendorCategoryLabel(
+                          detailUser.vendorProfile.category,
+                        )}
                       </p>
                     </div>
                     <div className="sm:col-span-2">

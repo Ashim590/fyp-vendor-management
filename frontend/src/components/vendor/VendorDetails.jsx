@@ -6,12 +6,18 @@ import {
   approveVendor,
   rejectVendor,
 } from "@/redux/vendorSlice";
-import { VENDOR_REVIEW_API_END_POINT } from "@/utils/constant";
+import {
+  VENDOR_REVIEW_API_END_POINT,
+  getVendorCategoryLabel,
+} from "@/utils/constant";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { toast } from "sonner";
+import { SESSION_ROLE } from "@/constants/userRoles";
 import { useParams, Link } from "react-router-dom";
+import { LoadingState } from "../ui/loading-state";
+import { getApiErrorMessage } from "@/utils/apiError";
 import {
   ArrowLeft,
   CheckCircle,
@@ -30,7 +36,7 @@ const VendorDetails = () => {
   const { user } = useSelector((store) => store.auth);
   const canApprove = user?.role === "admin";
   const canReviewVendor =
-    (user?.role === "admin" || user?.role === "staff") &&
+    (user?.role === SESSION_ROLE.ADMIN || user?.role === SESSION_ROLE.PROCUREMENT_OFFICER) &&
     user?.role !== "vendor";
   const {
     currentVendor: vendor,
@@ -68,9 +74,7 @@ const VendorDetails = () => {
       );
       setReviews(res.data?.reviews || []);
     } catch (err) {
-      toast.error(
-        err?.response?.data?.message || "Could not load review history.",
-      );
+      toast.error(getApiErrorMessage(err, "Could not load review history."));
       setReviews([]);
     } finally {
       setReviewsLoading(false);
@@ -89,7 +93,7 @@ const VendorDetails = () => {
       toast.success("Vendor approved successfully");
       dispatch(getVendorById(id));
     } catch (err) {
-      toast.error(err || "Failed to approve vendor");
+      toast.error(getApiErrorMessage(err, "Failed to approve vendor"));
     }
   };
 
@@ -121,7 +125,7 @@ const VendorDetails = () => {
       loadReviews();
       dispatch(getVendorById(id));
     } catch (err) {
-      toast.error(err?.response?.data?.message || "Could not save review.");
+      toast.error(getApiErrorMessage(err, "Could not save review."));
     } finally {
       setReviewSubmitting(false);
     }
@@ -137,7 +141,7 @@ const VendorDetails = () => {
         toast.success("Vendor rejected");
         dispatch(getVendorById(id));
       } catch (err) {
-        toast.error(err || "Failed to reject vendor");
+        toast.error(getApiErrorMessage(err, "Failed to reject vendor"));
       }
     }
   };
@@ -229,8 +233,8 @@ const VendorDetails = () => {
                 <h1 className="text-2xl font-bold">{vendor.name}</h1>
                 <div className="flex items-center gap-2 mt-1">
                   {getStatusBadge(vendor.status)}
-                  <span className="text-gray-500 capitalize">
-                    - {vendor.category?.replace("_", " ")}
+                  <span className="text-gray-500">
+                    — {getVendorCategoryLabel(vendor.category)}
                   </span>
                 </div>
                 <div className="flex items-center gap-1 mt-2">
@@ -550,7 +554,7 @@ const VendorDetails = () => {
                 </CardHeader>
                 <CardContent>
                   {reviewsLoading ? (
-                    <p className="text-sm text-gray-500">Loading…</p>
+                    <LoadingState variant="inline" />
                   ) : reviews.length === 0 ? (
                     <p className="text-sm text-gray-500">No reviews yet.</p>
                   ) : (

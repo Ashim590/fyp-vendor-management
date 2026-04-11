@@ -7,6 +7,16 @@ import type { IPayment } from '../models/Payment';
 import type { IInvoicePayment } from '../models/InvoicePayment';
 import type { IInvoice } from '../models/Invoice';
 
+function invoiceAuditLog(...args: unknown[]): void {
+  if (
+    process.env.NODE_ENV === 'production' &&
+    process.env.INVOICE_DEBUG !== '1'
+  ) {
+    return;
+  }
+  console.info(...args);
+}
+
 /**
  * After a tender (award) eSewa payment completes, create a paid invoice so it appears
  * under Invoices with PDF download — without requiring an existing purchase order.
@@ -49,7 +59,7 @@ export async function ensureInvoiceForTenderPayment(payment: IPayment): Promise<
 
   try {
     await inv.save();
-    console.info('[invoice] Created from tender payment', inv.invoiceNumber, String(payment._id));
+    invoiceAuditLog('[invoice] Created from tender payment', inv.invoiceNumber, String(payment._id));
   } catch (e: unknown) {
     const code = e && typeof e === 'object' && 'code' in e ? (e as { code: number }).code : 0;
     if (code === 11000) return;
@@ -86,7 +96,7 @@ export async function ensureInvoiceForPaidInvoicePayment(
     inv.paidAt = paidAt;
     inv.settledByInvoicePayment = invPay._id;
     await inv.save();
-    console.info('[invoice] Marked paid from eSewa', inv.invoiceNumber, String(invPay._id));
+    invoiceAuditLog('[invoice] Marked paid from eSewa', inv.invoiceNumber, String(invPay._id));
     return inv as mongoose.HydratedDocument<IInvoice>;
   }
 
@@ -130,7 +140,10 @@ export async function ensureInvoiceForPaidInvoicePayment(
 
   invPay.invoice = invNew._id;
   await invPay.save();
-  console.info('[invoice] Created from verified InvoicePayment (orphan recovery)', invNew.invoiceNumber);
+  invoiceAuditLog(
+    '[invoice] Created from verified InvoicePayment (orphan recovery)',
+    invNew.invoiceNumber,
+  );
   return invNew as mongoose.HydratedDocument<IInvoice>;
 }
 

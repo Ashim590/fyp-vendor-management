@@ -2,30 +2,18 @@ import { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { setUser, setToken } from "@/redux/authSlice";
+import { SESSION_ROLE, normalizeUserRoleFields } from "@/constants/userRoles";
 
-/** True once redux-persist has finished restoring the `auth` slice from storage. */
+/** `_persist.rehydrated` flips once the auth slice has been replayed from storage. */
 function isAuthStorageReady(authState) {
-  // Before the inner persistReducer attaches `_persist`, we must not treat auth as "ready"
-  // or we redirect to /login while user is still null (same frame as pre-REHYDRATE).
+  // Without this guard, the first render sees `user === null` and sends people to /login
+  // even though hydration is about to restore a session a moment later.
   return authState?._persist?.rehydrated === true;
 }
 
 /**
- * Role-Based Access Control (RBAC) Protected Route Component
- *
- * This component protects routes based on user authentication and role.
- *
- * @param {React.ReactNode} children - The child components to render if authorized
- * @param {string|string[]} allowedRoles - Single role or array of roles allowed to access the route
- *
- * Usage:
- * <ProtectedRoute allowedRoles="admin">
- *   <AdminComponent />
- * </ProtectedRoute>
- *
- * <ProtectedRoute allowedRoles={["admin", "staff"]}>
- *   <StaffComponent />
- * </ProtectedRoute>
+ * Wraps pages that need a signed-in user and an allowed session role; redirects
+ * handle the common “wrong role” and “logged out” cases in one place.
  */
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const auth = useSelector((store) => store.auth);
@@ -51,7 +39,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
             (parsed.role || parsed._id || parsed.id)
           ) {
             dispatch(setToken(token));
-            dispatch(setUser(parsed));
+            dispatch(setUser(normalizeUserRoleFields(parsed)));
             return;
           }
         } catch {
@@ -135,23 +123,20 @@ export const useHasRole = (requiredRoles) => {
  */
 export const useIsAdmin = () => {
   const { user } = useSelector((store) => store.auth);
-  return user?.role === "admin";
+  return user?.role === SESSION_ROLE.ADMIN;
 };
 
-/**
- * Hook to check if current user is staff
- * @returns {boolean} - True if user is staff
- */
-export const useIsStaff = () => {
+/** Procurement officer session slug; lines up with backend `PROCUREMENT_OFFICER`. */
+export const useIsProcurementOfficer = () => {
   const { user } = useSelector((store) => store.auth);
-  return user?.role === "staff";
+  return user?.role === SESSION_ROLE.PROCUREMENT_OFFICER;
 };
 
-/**
- * Hook to check if current user is vendor
- * @returns {boolean} - True if user is vendor
- */
+/** Older name from when the session slug was still `staff`. */
+export const useIsStaff = useIsProcurementOfficer;
+
+/** Vendor marketplace / vendor-dashboard flows. */
 export const useIsVendor = () => {
   const { user } = useSelector((store) => store.auth);
-  return user?.role === "vendor";
+  return user?.role === SESSION_ROLE.VENDOR;
 };

@@ -14,6 +14,7 @@ import {
   parseListLimit,
   trimExtraDoc,
 } from "../utils/cursorPagination";
+import { roleTargetFromUserRole } from "../utils/notificationRoleTarget";
 
 const router = Router();
 
@@ -308,7 +309,7 @@ router.post(
           role: { $in: ["ADMIN", "PROCUREMENT_OFFICER"] },
           isActive: true,
         })
-          .select("_id")
+          .select("_id role")
           .lean();
 
         const vendorName = vendorDoc.name || "A vendor";
@@ -331,6 +332,8 @@ router.post(
             link,
             type: "bid_submitted" as const,
             read: false,
+            referenceId: tender._id,
+            roleTarget: roleTargetFromUserRole(u.role),
           }));
 
         if (notifs.length) {
@@ -828,6 +831,8 @@ router.patch(
               body: `Your quotation for "${tenderDoc.title}" was not selected. ${AUTO_REJECT_REASON}`,
               link: `/my-bids`,
               type: "bid_rejected",
+              referenceId: ob._id,
+              roleTarget: "VENDOR",
             });
           }
         }
@@ -864,6 +869,8 @@ router.patch(
           body: `Your quotation for "${tenderDoc.title}" was selected as the preferred offer. Procurement may finalize the award in a separate step.`,
           link: `/my-bids?openBid=${bid._id}`,
           type: "bid_accepted",
+          referenceId: bid._id,
+          roleTarget: "VENDOR",
         });
       }
 
@@ -918,6 +925,8 @@ router.patch(
           body: `Your quotation was not selected for this tender.${rejectionReason ? ` Reason: ${rejectionReason}` : ""}`,
           link: `/my-bids`,
           type: "bid_rejected",
+          referenceId: bid._id,
+          roleTarget: "VENDOR",
         });
       }
 

@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { Search, CheckCircle, XCircle, Eye, FileText } from "lucide-react";
 import { Link } from "react-router-dom";
 import { WORKSPACE_DATA_TABLE_CLASS } from "../layout/WorkspacePageLayout";
+import { LoadingState } from "../ui/loading-state";
 import { cn } from "@/lib/utils";
 
 const Quotations = () => {
@@ -163,8 +164,8 @@ const Quotations = () => {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center">
-                    Loading...
+                  <TableCell colSpan={8} className="p-0">
+                    <LoadingState variant="table" />
                   </TableCell>
                 </TableRow>
               ) : filteredQuotations.length === 0 ? (

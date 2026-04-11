@@ -650,7 +650,9 @@ router.patch(
           body: `"${tender.title}" (${tender.referenceNumber}) is now open for bidding. View it under Tenders.`,
           link: `/tenders/${tid}`,
           type: 'tender_created' as const,
-          read: false
+          read: false,
+          referenceId: tender._id,
+          roleTarget: 'VENDOR' as const,
         }));
         if (notifs.length) {
           await Notification.insertMany(notifs);

@@ -12,6 +12,10 @@ import {
   WorkspacePageHeader,
   WorkspaceSegmentedControl,
 } from "../layout/WorkspacePageLayout";
+import { EmptyState } from "../ui/empty-state";
+import { FileText } from "lucide-react";
+import { getApiErrorMessage } from "@/utils/apiError";
+import { getTechnicalProposalDisplayText } from "@/utils/technicalProposal";
 
 const statusConfig = {
   SUBMITTED: { label: "Pending", variant: "statusWarning" },
@@ -105,7 +109,7 @@ const MyBids = () => {
         loadBids();
       })
       .catch((err) =>
-        toast.error(err.response?.data?.message || "Could not withdraw."),
+        toast.error(getApiErrorMessage(err, "Could not withdraw.")),
       );
   };
 
@@ -135,14 +139,14 @@ const MyBids = () => {
             ))}
           </div>
         ) : bids.length === 0 ? (
-          <div className="rounded-2xl border border-slate-200/90 bg-white p-10 text-center text-slate-500 shadow-sm">
-            You have not submitted any tender quotations yet.
-            <Link
-              to="/tenders"
-              className="mt-3 block text-sm font-semibold text-[#0b1f4d] hover:underline"
-            >
-              Browse tenders
-            </Link>
+          <div className="rounded-2xl border border-slate-200/90 bg-white shadow-sm">
+            <EmptyState
+              icon={FileText}
+              title="No quotations yet"
+              description="Submit a quotation from an open tender to see it tracked here with status and payment info."
+              action={{ label: "Browse tenders", to: "/tenders" }}
+              secondaryAction={{ label: "Vendor dashboard", to: "/" }}
+            />
           </div>
         ) : (
           <div className="space-y-4">
@@ -185,6 +189,9 @@ const MyBids = () => {
               const isOpen = openBidId === bid._id;
               const tenderId = String(t?._id || t || "");
               const myPayment = paymentsByTender[tenderId] || null;
+              const techDisplay = getTechnicalProposalDisplayText(
+                bid.technicalProposal,
+              );
               return (
                 <div
                   key={bid._id}
@@ -217,11 +224,11 @@ const MyBids = () => {
                             {Number(bid.vatAmount).toLocaleString("en-NP")}
                           </p>
                         )}
-                      {bid.technicalProposal?.trim() && (
+                      {techDisplay ? (
                         <p className="text-sm text-slate-600 mt-2 line-clamp-3 whitespace-pre-wrap">
-                          {bid.technicalProposal}
+                          {techDisplay}
                         </p>
-                      )}
+                      ) : null}
                       {bid.rejectionReason && (
                         <p className="text-sm text-red-600 mt-2">
                           Note: {bid.rejectionReason}
@@ -308,12 +315,10 @@ const MyBids = () => {
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                         <div>
                           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                            Proposal
+                            Technical proposal
                           </p>
                           <p className="min-h-[4rem] whitespace-pre-wrap rounded-md border bg-slate-50 p-3 text-sm text-slate-700">
-                            {bid.technicalProposal?.trim()
-                              ? bid.technicalProposal
-                              : "—"}
+                            {techDisplay || "—"}
                           </p>
                         </div>
                         <div>

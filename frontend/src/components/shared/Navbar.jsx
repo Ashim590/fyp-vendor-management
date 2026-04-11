@@ -27,26 +27,31 @@ import { setUser, setToken } from "@/redux/authSlice";
 import { toast } from "sonner";
 import NotificationBell from "../notifications/NotificationBell";
 import { WorkspaceSidebarLinks } from "../layout/AppSidebar";
+import { SESSION_ROLE, getRoleLabel } from "@/constants/userRoles";
 
 const NAV_CONFIG = {
-  admin: [
+  [SESSION_ROLE.ADMIN]: [
     { name: "Dashboard", path: "/admin", icon: LayoutDashboard },
     { name: "Users", path: "/admin/users", icon: UsersIcon },
     { name: "Vendors", path: "/admin?tab=vendors", icon: Package },
-    { name: "Approvals", path: "/approvals", icon: CheckCircle },
+    {
+      name: "Purchase Approvals",
+      path: "/approvals",
+      icon: CheckCircle,
+    },
     { name: "Tenders", path: "/tenders", icon: Gavel },
     { name: "Bids", path: "/bids-monitor", icon: ClipboardList },
     { name: "Deliveries", path: "/deliveries", icon: Truck },
     { name: "Reports", path: "/admin?tab=overview", icon: FileText },
   ],
-  staff: [
+  [SESSION_ROLE.PROCUREMENT_OFFICER]: [
     { name: "Dashboard", path: "/", icon: LayoutDashboard },
     { name: "Purchase Requests", path: "/purchase-requests", icon: FileText },
     { name: "Tenders", path: "/tenders", icon: Gavel },
     { name: "Bids Monitor", path: "/bids-monitor", icon: ClipboardList },
     { name: "Deliveries", path: "/deliveries", icon: Truck },
   ],
-  vendor: [
+  [SESSION_ROLE.VENDOR]: [
     { name: "Dashboard", path: "/", icon: LayoutDashboard },
     { name: "Tenders", path: "/tenders", icon: Gavel },
     { name: "Tender quotations", path: "/my-bids", icon: ClipboardList },
@@ -88,48 +93,32 @@ const Navbar = () => {
     return tab === needTab;
   };
 
-  const scrollToPublicSection = (path) => {
-    if (!path?.startsWith("/#")) return;
-    const id = path.replace("/#", "");
-    navigate(path);
-    setMobileOpen(false);
-
-    requestAnimationFrame(() => {
-      const target = id ? document.getElementById(id) : null;
-      if (target) {
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
-      } else {
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      }
-    });
-  };
-
   const getNavItems = () => {
     if (!user?.role) return [];
     return NAV_CONFIG[user.role] || [];
   };
 
   const publicNavItems = [
-    { name: "Home", path: "/#home" },
-    { name: "About", path: "/#about" },
-    { name: "Features", path: "/#features" },
-    { name: "Contact", path: "/#contact" },
+    { name: "Home", path: "/" },
+    { name: "About", path: "/about" },
+    { name: "Features", path: "/features" },
+    { name: "How it works", path: "/how-it-works" },
+    { name: "Contact", path: "/contact" },
   ];
 
-  const getRoleDisplayName = (role) => {
-    const roleNames = {
-      admin: "Administrator",
-      staff: "Procurement Officer",
-      vendor: "Vendor",
-    };
-    return roleNames[role] || role;
+  const isPublicNavActive = (to) => {
+    if (to === "/") return location.pathname === "/";
+    return location.pathname === to;
   };
+
+  const getRoleDisplayName = (role) => getRoleLabel(role) || role;
 
   const getRoleBadgeColor = (role) => {
     const colors = {
-      admin: "bg-slate-100 text-slate-800 ring-1 ring-slate-200",
-      staff: "bg-teal-50 text-teal-800 ring-1 ring-teal-100",
-      vendor: "bg-slate-50 text-slate-700 ring-1 ring-slate-200",
+      [SESSION_ROLE.ADMIN]: "bg-slate-100 text-slate-800 ring-1 ring-slate-200",
+      [SESSION_ROLE.PROCUREMENT_OFFICER]:
+        "bg-teal-50 text-teal-800 ring-1 ring-teal-100",
+      [SESSION_ROLE.VENDOR]: "bg-slate-50 text-slate-700 ring-1 ring-slate-200",
     };
     return colors[role] || "bg-slate-100 text-slate-700 ring-1 ring-slate-200";
   };
@@ -158,15 +147,15 @@ const Navbar = () => {
         {/* Logo */}
         <Link
           to="/"
-          className="flex items-center gap-2.5 transition-opacity hover:opacity-90"
+          className="flex min-w-0 items-center gap-2.5 transition-opacity hover:opacity-90"
         >
           <img
             src="/Logo.png"
             alt="Paropakar VendorNet"
             className="h-8 w-8 rounded-lg object-contain"
           />
-          <h1 className="text-sm font-semibold leading-tight tracking-tight sm:text-base lg:text-lg">
-            <span className="text-slate-100">Paropakar </span>
+          <h1 className="truncate text-sm font-semibold leading-tight tracking-tight sm:text-base lg:text-lg">
+            <span className="hidden text-slate-100 sm:inline">Paropakar </span>
             <span className="text-[#5eead4]">VendorNet</span>
           </h1>
         </Link>
@@ -174,20 +163,14 @@ const Navbar = () => {
         {/* Desktop nav links */}
         <div className="hidden items-center gap-4 lg:flex">
           {!user && (
-            <ul className="flex items-center gap-1 text-sm">
+            <ul className="flex flex-wrap items-center justify-end gap-0.5 text-sm lg:gap-1">
               {publicNavItems.map((item) => {
-                const hash = item.path.replace("/#", "");
-                const active =
-                  location.pathname === "/" && location.hash === `#${hash}`;
+                const active = isPublicNavActive(item.path);
                 return (
                   <li key={item.path}>
                     <Link
                       to={item.path}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        scrollToPublicSection(item.path);
-                      }}
-                      className={`rounded-lg px-3 py-2 font-medium transition ${
+                      className={`rounded-lg px-2 py-2 font-medium transition lg:px-3 ${
                         active
                           ? "bg-[#12306b] text-white shadow-sm"
                           : "text-slate-200 hover:bg-[#17366f] hover:text-white"
@@ -317,17 +300,12 @@ const Navbar = () => {
           {!user && (
             <>
               {publicNavItems.map((item) => {
-                const hash = item.path.replace("/#", "");
-                const active =
-                  location.pathname === "/" && location.hash === `#${hash}`;
+                const active = isPublicNavActive(item.path);
                 return (
                   <Link
                     key={item.path}
                     to={item.path}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      scrollToPublicSection(item.path);
-                    }}
+                    onClick={() => setMobileOpen(false)}
                     className={`block rounded-lg px-3 py-3 text-sm font-medium transition ${
                       active
                         ? "bg-slate-900 text-white shadow-sm"

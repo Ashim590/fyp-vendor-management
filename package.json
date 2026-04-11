@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "Paropakar VendorNet – Digital procurement and vendor management platform for NGOs in Nepal.",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "npm-run-all --parallel dev:backend dev:frontend",
     "dev:backend": "cd backend && npm run dev",

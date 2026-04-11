@@ -146,6 +146,8 @@ router.post(
         body: `Payment status for tender ${payment.tenderReference} is pending (NPR ${payment.amount}). Procurement will complete payment; you can track status in My payments.`,
         link: "/my-payments",
         type: "payment_pending",
+        referenceId: payment._id,
+        roleTarget: "VENDOR",
       });
     }
 
@@ -534,6 +536,8 @@ async function tenderEsewaCallbackHandler(
           : `Payment for tender ${payment.tenderReference} could not be verified.`,
         link: isSuccess ? "/invoices" : "/my-payments",
         type: isSuccess ? "payment_completed" : "payment_failed",
+        referenceId: payment._id,
+        roleTarget: "VENDOR",
       });
     }
 

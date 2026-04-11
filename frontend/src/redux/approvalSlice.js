@@ -1,17 +1,8 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
+import { getApiErrorMessage } from "@/utils/apiError";
 import { APPROVAL_API_END_POINT } from "@/utils/constant";
 import { getAuthHeaderFromStorage } from "@/utils/authHeader";
-
-/** Normalize API error message for toast / state (string or validation array). */
-function approvalErrorMessage(error, fallback) {
-  const raw = error?.response?.data?.message ?? error?.response?.data?.error;
-  if (Array.isArray(raw)) return raw.map(String).join(", ");
-  if (typeof raw === "string" && raw.trim()) return raw;
-  if (error?.message === "Network Error")
-    return "Cannot reach server. Is the API running and reachable?";
-  return fallback;
-}
 
 const approvalAxiosConfig = () => ({
   withCredentials: true,
@@ -30,7 +21,7 @@ export const createApproval = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        approvalErrorMessage(error, "Error creating approval"),
+        getApiErrorMessage(error, "Error creating approval"),
       );
     }
   }
@@ -47,7 +38,7 @@ export const getMyPendingApprovals = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        approvalErrorMessage(error, "Error fetching pending approvals"),
+        getApiErrorMessage(error, "Error fetching pending approvals"),
       );
     }
   }
@@ -64,7 +55,7 @@ export const getAllApprovals = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        approvalErrorMessage(error, "Error fetching approvals"),
+        getApiErrorMessage(error, "Error fetching approvals"),
       );
     }
   }
@@ -82,7 +73,7 @@ export const approveRequest = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        approvalErrorMessage(error, "Error approving request"),
+        getApiErrorMessage(error, "Error approving request"),
       );
     }
   }
@@ -100,7 +91,7 @@ export const rejectApprovalRequest = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        approvalErrorMessage(error, "Error rejecting request"),
+        getApiErrorMessage(error, "Error rejecting request"),
       );
     }
   }
@@ -117,7 +108,7 @@ export const getApprovalById = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        approvalErrorMessage(error, "Error fetching approval"),
+        getApiErrorMessage(error, "Error fetching approval"),
       );
     }
   }

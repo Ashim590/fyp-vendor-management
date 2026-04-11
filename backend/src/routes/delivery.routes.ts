@@ -1,5 +1,6 @@
 import express from "express";
 import mongoose from "mongoose";
+import multer from "multer";
 import { authenticate, authorize, AuthRequest } from "../middleware/auth";
 import Delivery, { DeliveryStatus, IDelivery } from "../models/Delivery";
 import PurchaseOrder from "../models/PurchaseOrder";
@@ -11,21 +12,49 @@ import {
   trimExtraDoc,
 } from "../utils/cursorPagination";
 import { invalidateStaffSummaryCache } from "../utils/staffDashboardCache";
+import {
+  DELIVERY_PATCH_FORWARD,
+  DELIVERY_STATUS,
+  DeliveryWorkflowStatus,
+  canProcurementGeoConfirm,
+  normalizeDeliveryStatus,
+} from "../constants/deliveryWorkflow";
+import { serializeDeliveryLean } from "../utils/deliverySerialize";
 
 const router = express.Router();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
 
-/** Status changes via PATCH (use PUT /receive to confirm receipt after delivered) */
-const PATCH_FORWARD: Record<DeliveryStatus, DeliveryStatus[]> = {
-  pending: ["shipped"],
-  shipped: ["in_transit"],
-  in_transit: ["delivered"],
-  delivered: [],
-  received: ["inspected"],
-  inspected: [],
-  rejected: [],
+function fileToDataUrl(file: Express.Multer.File): string {
+  const b64 = file.buffer.toString("base64");
+  return `data:${file.mimetype};base64,${b64}`;
+}
+
+function toDeliveryJson(d: IDelivery) {
+  const o = d.toObject() as Record<string, unknown>;
+  return serializeDeliveryLean(o);
+}
+
+function mapLeanList(items: Record<string, unknown>[]) {
+  return items.map((x) => serializeDeliveryLean(x));
+}
+
+const VENDOR_FORWARD: Record<DeliveryWorkflowStatus, DeliveryWorkflowStatus[]> = {
+  PENDING: [DELIVERY_STATUS.ACCEPTED],
+  ACCEPTED: [DELIVERY_STATUS.IN_TRANSIT],
+  IN_TRANSIT: [DELIVERY_STATUS.READY_FOR_CONFIRMATION],
+  READY_FOR_CONFIRMATION: [],
+  VERIFIED: [],
+  INSPECTED: [],
+  REJECTED: [],
 };
 
-function vendorOwnsDelivery(req: AuthRequest, d: IDelivery): boolean {
+function vendorOwnsDelivery(
+  req: AuthRequest,
+  d: { vendor?: unknown },
+): boolean {
   const vid = req.user?.vendorProfile;
   if (!vid) return false;
   return String(d.vendor) === String(vid);
@@ -33,7 +62,7 @@ function vendorOwnsDelivery(req: AuthRequest, d: IDelivery): boolean {
 
 function appendHistory(
   d: IDelivery,
-  status: DeliveryStatus,
+  status: string,
   note: string,
   user?: { _id: mongoose.Types.ObjectId; name?: string },
 ): void {
@@ -46,6 +75,19 @@ function appendHistory(
     byName: user?.name || "",
   });
   d.statusHistory = list;
+}
+
+function applyOptionalVendorProofFromBody(
+  delivery: IDelivery,
+  proofImage: unknown,
+): void {
+  if (
+    typeof proofImage === "string" &&
+    proofImage.startsWith("data:image/") &&
+    proofImage.length < 6 * 1024 * 1024
+  ) {
+    delivery.vendorProofImage = proofImage;
+  }
 }
 
 router.post(
@@ -63,18 +105,21 @@ router.post(
       : await Vendor.findById(po.vendor);
     if (!vendor) return res.status(404).json({ message: "Vendor not found" });
 
+    const initial = normalizeDeliveryStatus(status) as DeliveryStatus;
+
     const delivery = new Delivery({
       purchaseOrder: po._id,
       purchaseOrderNumber: po.orderNumber,
       orderReference: po.orderNumber,
+      orderRef: po.orderNumber,
       vendor: vendor._id,
       vendorName: vendor.name,
       items: Array.isArray(items) ? items : [],
       expectedDate: expectedDate ? new Date(expectedDate) : new Date(),
-      status: (status as DeliveryStatus) ?? "pending",
+      status: initial,
       statusHistory: [
         {
-          status: (status as DeliveryStatus) ?? "pending",
+          status: initial,
           note: "Created from purchase order",
           at: new Date(),
           byUser: req.user?._id,
@@ -85,7 +130,7 @@ router.post(
 
     await delivery.save();
     invalidateStaffSummaryCache();
-    res.status(201).json({ success: true, delivery: delivery.toObject() });
+    res.status(201).json({ success: true, delivery: toDeliveryJson(delivery) });
   },
 );
 
@@ -113,7 +158,12 @@ router.get(
         .select("-statusHistory -items")
         .lean();
       const { items, nextCursor, hasMore } = trimExtraDoc(raw, pageLimit);
-      res.json({ success: true, deliveries: items, nextCursor, hasMore });
+      res.json({
+        success: true,
+        deliveries: mapLeanList(items as Record<string, unknown>[]),
+        nextCursor,
+        hasMore,
+      });
     } catch (err) {
       console.error("GET /api/v1/delivery/my", err);
       return res.status(500).json({
@@ -151,7 +201,12 @@ router.get(
         .select("-statusHistory -items")
         .lean();
       const { items, nextCursor, hasMore } = trimExtraDoc(raw, pageLimit);
-      res.json({ success: true, deliveries: items, nextCursor, hasMore });
+      res.json({
+        success: true,
+        deliveries: mapLeanList(items as Record<string, unknown>[]),
+        nextCursor,
+        hasMore,
+      });
     } catch (err) {
       console.error("GET /api/v1/delivery", err);
       return res.status(500).json({
@@ -170,13 +225,16 @@ router.get(
     if (!mongoose.isValidObjectId(req.params.deliveryId)) {
       return res.status(400).json({ message: "Invalid delivery id" });
     }
-    const delivery = await Delivery.findById(req.params.deliveryId);
+    const delivery = await Delivery.findById(req.params.deliveryId).lean();
     if (!delivery)
       return res.status(404).json({ message: "Delivery not found" });
     if (req.user!.role === "VENDOR" && !vendorOwnsDelivery(req, delivery)) {
       return res.status(403).json({ message: "Forbidden" });
     }
-    res.json({ success: true, delivery });
+    res.json({
+      success: true,
+      delivery: serializeDeliveryLean(delivery as Record<string, unknown>),
+    });
   },
 );
 
@@ -185,7 +243,7 @@ router.patch(
   authenticate,
   authorize(["ADMIN", "PROCUREMENT_OFFICER", "VENDOR"]),
   async (req: AuthRequest, res) => {
-    const { status: nextStatus, note } = req.body || {};
+    const { status: nextRaw, note, proofImage } = req.body || {};
     if (!mongoose.isValidObjectId(req.params.deliveryId)) {
       return res.status(400).json({ message: "Invalid delivery id" });
     }
@@ -196,42 +254,38 @@ router.patch(
       return res.status(403).json({ message: "Forbidden" });
     }
 
-    const cur = delivery.status as DeliveryStatus;
-    const next = nextStatus as DeliveryStatus;
-    if (next === "received") {
-      return res
-        .status(400)
-        .json({ message: "Use PUT /receive to confirm receipt" });
-    }
-    if (!next || !PATCH_FORWARD[cur]?.includes(next)) {
+    const cur = normalizeDeliveryStatus(delivery.status as string);
+    const next = normalizeDeliveryStatus(nextRaw as string);
+
+    if (next === DELIVERY_STATUS.VERIFIED) {
       return res.status(400).json({
-        message: `Invalid transition from ${cur} to ${next || "undefined"}`,
+        message: "Use PATCH /confirm with GPS — procurement officer only",
       });
     }
 
-    if (req.user!.role === "VENDOR") {
-      if (!["shipped", "in_transit", "delivered"].includes(next)) {
-        return res
-          .status(403)
-          .json({
-            message: "Vendors cannot set this status via this endpoint",
-          });
-      }
-      if (next === "delivered" && cur !== "in_transit") {
-        return res
-          .status(400)
-          .json({ message: "Must be in transit before marking delivered" });
-      }
+    const allowed =
+      req.user!.role === "VENDOR"
+        ? VENDOR_FORWARD[cur]?.includes(next)
+        : DELIVERY_PATCH_FORWARD[cur]?.includes(next);
+
+    if (!nextRaw || !allowed) {
+      return res.status(400).json({
+        message: `Invalid transition from ${cur} to ${nextRaw || "undefined"}`,
+      });
     }
 
-    if (next === "inspected" && req.user!.role === "VENDOR") {
-      return res
-        .status(403)
-        .json({ message: "Only staff can record inspection" });
+    if (req.user!.role === "VENDOR" && next === DELIVERY_STATUS.REJECTED) {
+      return res.status(403).json({ message: "Vendors cannot reject via this endpoint" });
     }
 
-    delivery.status = next;
-    if (next === "delivered") {
+    if (next === DELIVERY_STATUS.INSPECTED && req.user!.role === "VENDOR") {
+      return res.status(403).json({ message: "Only staff can record inspection" });
+    }
+
+    applyOptionalVendorProofFromBody(delivery, proofImage);
+
+    delivery.status = next as DeliveryStatus;
+    if (next === DELIVERY_STATUS.READY_FOR_CONFIRMATION) {
       delivery.actualDate = new Date();
     }
     appendHistory(delivery, next, String(note || ""), {
@@ -248,29 +302,168 @@ router.patch(
       | "delivery_delivered" = "delivery_shipped";
     let title = "Delivery updated";
     let body = `${ref} (${vendorName}) status: ${next}.`;
-    if (next === "shipped") {
+    if (next === DELIVERY_STATUS.ACCEPTED) {
       ntype = "delivery_shipped";
-      title = "Order shipped";
-      body = `${ref} — ${vendorName} marked the order as shipped.`;
-    } else if (next === "in_transit") {
+      title = "Delivery accepted";
+      body = `${ref} — ${vendorName} accepted the delivery.`;
+    } else if (next === DELIVERY_STATUS.IN_TRANSIT) {
       ntype = "delivery_in_transit";
-      title = "Order in transit";
-      body = `${ref} — ${vendorName} marked the order as in transit.`;
-    } else if (next === "delivered") {
+      title = "Delivery in transit";
+      body = `${ref} — ${vendorName} marked the delivery in transit.`;
+    } else if (next === DELIVERY_STATUS.READY_FOR_CONFIRMATION) {
       ntype = "delivery_delivered";
-      title = "Order delivered";
-      body = `${ref} — ${vendorName} marked the order as delivered. Please confirm receipt.`;
+      title = "Ready for confirmation";
+      body = `${ref} — ${vendorName} marked goods ready. Procurement: confirm receipt with GPS.`;
     }
     await notifyDeliveryEvent({
       title,
       body,
       vendorId: delivery.vendor as mongoose.Types.ObjectId,
+      deliveryId: delivery._id as mongoose.Types.ObjectId,
       type: ntype,
       excludeUserId: req.user!._id,
     }).catch(() => {});
 
     invalidateStaffSummaryCache();
-    res.json({ success: true, delivery: delivery.toObject() });
+    res.json({ success: true, delivery: toDeliveryJson(delivery) });
+  },
+);
+
+async function runGeoConfirm(
+  req: AuthRequest,
+  res: express.Response,
+  delivery: IDelivery,
+  opts: {
+    lat: number;
+    lng: number;
+    notes?: string;
+    receivedBy?: string;
+    proofDataUrl?: string;
+  },
+) {
+  if (!canProcurementGeoConfirm(delivery.status as string)) {
+    return res.status(400).json({
+      message:
+        "Delivery must be READY_FOR_CONFIRMATION (vendor must complete prior steps)",
+    });
+  }
+
+  const { lat, lng, notes, receivedBy, proofDataUrl } = opts;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return res
+      .status(400)
+      .json({ message: "Valid latitude and longitude are required" });
+  }
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return res
+      .status(400)
+      .json({ message: "Latitude/longitude out of valid range" });
+  }
+
+  delivery.deliveryLocation = {
+    type: "Point",
+    coordinates: [lng, lat],
+  };
+  if (proofDataUrl) {
+    delivery.deliveryProofImage = proofDataUrl;
+  }
+
+  const confirmedAt = new Date();
+  delivery.deliveredAt = confirmedAt;
+  delivery.receivedData = {
+    receivedDate: confirmedAt,
+    receivedBy: receivedBy ?? req.user!.name ?? "Procurement officer",
+    notes: notes ?? "",
+  };
+  delivery.actualDate = confirmedAt;
+  delivery.status = DELIVERY_STATUS.VERIFIED as DeliveryStatus;
+
+  appendHistory(
+    delivery,
+    DELIVERY_STATUS.VERIFIED,
+    `Geo-verified receipt (${lat.toFixed(6)}, ${lng.toFixed(6)})`,
+    {
+      _id: req.user!._id,
+      name: req.user!.name,
+    },
+  );
+  await delivery.save();
+
+  const ref = delivery.orderReference || delivery.deliveryNumber;
+  await notifyDeliveryEvent({
+    title: "Delivery geo-verified",
+    body: `${ref} — ${delivery.vendorName} confirmed with GPS audit trail.`,
+    vendorId: delivery.vendor as mongoose.Types.ObjectId,
+    deliveryId: delivery._id as mongoose.Types.ObjectId,
+    type: "delivery_received",
+    excludeUserId: req.user!._id,
+  }).catch(() => {});
+
+  invalidateStaffSummaryCache();
+  return res.json({ success: true, delivery: toDeliveryJson(delivery) });
+}
+
+router.patch(
+  "/:deliveryId/confirm",
+  authenticate,
+  authorize(["PROCUREMENT_OFFICER"]),
+  async (req: AuthRequest, res) => {
+    if (!mongoose.isValidObjectId(req.params.deliveryId)) {
+      return res.status(400).json({ message: "Invalid delivery id" });
+    }
+    const delivery = await Delivery.findById(req.params.deliveryId);
+    if (!delivery)
+      return res.status(404).json({ message: "Delivery not found" });
+
+    const { latitude, longitude, notes, receivedBy, proofImage } =
+      req.body || {};
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+    let proofDataUrl: string | undefined;
+    if (
+      typeof proofImage === "string" &&
+      proofImage.startsWith("data:image/") &&
+      proofImage.length < 6 * 1024 * 1024
+    ) {
+      proofDataUrl = proofImage;
+    }
+
+    return runGeoConfirm(req, res, delivery, {
+      lat,
+      lng,
+      notes,
+      receivedBy,
+      proofDataUrl,
+    });
+  },
+);
+
+router.post(
+  "/:deliveryId/confirm-delivery",
+  authenticate,
+  authorize(["PROCUREMENT_OFFICER"]),
+  upload.single("deliveryProofImage"),
+  async (req: AuthRequest, res) => {
+    if (!mongoose.isValidObjectId(req.params.deliveryId)) {
+      return res.status(400).json({ message: "Invalid delivery id" });
+    }
+    const delivery = await Delivery.findById(req.params.deliveryId);
+    if (!delivery)
+      return res.status(404).json({ message: "Delivery not found" });
+
+    const { latitude, longitude, notes, receivedBy } = req.body || {};
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+    const photoFile = req.file as Express.Multer.File | undefined;
+    const proofDataUrl = photoFile ? fileToDataUrl(photoFile) : undefined;
+
+    return runGeoConfirm(req, res, delivery, {
+      lat,
+      lng,
+      notes,
+      receivedBy,
+      proofDataUrl,
+    });
   },
 );
 
@@ -289,17 +482,21 @@ router.patch(
     if (!vendorOwnsDelivery(req, delivery)) {
       return res.status(403).json({ message: "Forbidden" });
     }
-    if (["received", "inspected"].includes(delivery.status)) {
-      return res
-        .status(400)
-        .json({ message: "Cannot record delay after receipt" });
+    const s = normalizeDeliveryStatus(delivery.status as string);
+    const noDelay = new Set<DeliveryWorkflowStatus>([
+      DELIVERY_STATUS.VERIFIED,
+      DELIVERY_STATUS.INSPECTED,
+      DELIVERY_STATUS.REJECTED,
+    ]);
+    if (noDelay.has(s)) {
+      return res.status(400).json({ message: "Cannot record delay after verification" });
     }
     delivery.delayReason = String(reason || "").trim() || "Delay recorded";
     delivery.delayRecordedAt = new Date();
     delivery.delayRecordedBy = req.user!._id;
     appendHistory(
       delivery,
-      delivery.status as DeliveryStatus,
+      s,
       `Delay: ${delivery.delayReason}`,
       {
         _id: req.user!._id,
@@ -313,12 +510,13 @@ router.patch(
       title: "Delivery delay recorded",
       body: `${ref} — ${delivery.vendorName}: ${delivery.delayReason}`,
       vendorId: delivery.vendor as mongoose.Types.ObjectId,
+      deliveryId: delivery._id as mongoose.Types.ObjectId,
       type: "delivery_delayed",
       excludeUserId: req.user!._id,
     }).catch(() => {});
 
     invalidateStaffSummaryCache();
-    res.json({ success: true, delivery: delivery.toObject() });
+    res.json({ success: true, delivery: toDeliveryJson(delivery) });
   },
 );
 
@@ -344,7 +542,7 @@ router.patch(
 
     appendHistory(
       delivery,
-      delivery.status as DeliveryStatus,
+      normalizeDeliveryStatus(delivery.status as string),
       `Comment: ${cleanNote}`,
       {
         _id: req.user!._id,
@@ -353,7 +551,7 @@ router.patch(
     );
     await delivery.save();
 
-    res.json({ success: true, delivery: delivery.toObject() });
+    res.json({ success: true, delivery: toDeliveryJson(delivery) });
   },
 );
 
@@ -361,49 +559,11 @@ router.put(
   "/:deliveryId/receive",
   authenticate,
   authorize(["ADMIN", "PROCUREMENT_OFFICER"]),
-  async (req: AuthRequest, res) => {
-    if (!mongoose.isValidObjectId(req.params.deliveryId)) {
-      return res.status(400).json({ message: "Invalid delivery id" });
-    }
-    const delivery = await Delivery.findById(req.params.deliveryId);
-    if (!delivery)
-      return res.status(404).json({ message: "Delivery not found" });
-    if (delivery.status !== "delivered") {
-      return res
-        .status(400)
-        .json({
-          message:
-            "Order must be marked delivered by vendor before receipt confirmation",
-        });
-    }
-    const body = req.body || {};
-    const receivedData = body.receivedData || body;
-    delivery.receivedData = {
-      receivedDate: receivedData.receivedDate
-        ? new Date(receivedData.receivedDate)
-        : new Date(),
-      receivedBy: receivedData.receivedBy ?? req.user!.name ?? "Officer",
-      notes: receivedData.notes ?? "",
-    };
-    delivery.actualDate = delivery.receivedData.receivedDate;
-    delivery.status = "received";
-    appendHistory(delivery, "received", "Receipt confirmed by procurement", {
-      _id: req.user!._id,
-      name: req.user!.name,
+  async (_req: AuthRequest, res) => {
+    return res.status(403).json({
+      message:
+        "Receipt without GPS is disabled. Procurement officers must use PATCH /delivery/:id/confirm with browser geolocation.",
     });
-    await delivery.save();
-
-    const ref = delivery.orderReference || delivery.deliveryNumber;
-    await notifyDeliveryEvent({
-      title: "Delivery received & verified",
-      body: `${ref} — ${delivery.vendorName} was confirmed received by procurement.`,
-      vendorId: delivery.vendor as mongoose.Types.ObjectId,
-      type: "delivery_received",
-      excludeUserId: req.user!._id,
-    }).catch(() => {});
-
-    invalidateStaffSummaryCache();
-    res.json({ success: true, delivery: delivery.toObject() });
   },
 );
 
@@ -418,16 +578,22 @@ router.put(
     const delivery = await Delivery.findById(req.params.deliveryId);
     if (!delivery)
       return res.status(404).json({ message: "Delivery not found" });
+    const s = normalizeDeliveryStatus(delivery.status as string);
+    if (s !== DELIVERY_STATUS.VERIFIED) {
+      return res.status(400).json({
+        message: "Inspection is only allowed after geo-verification (VERIFIED)",
+      });
+    }
     const body = req.body || {};
     const inspectionData = body.inspectionData || body;
     delivery.inspectionData = {
       status: inspectionData.status ?? "inspected",
       notes: inspectionData.notes ?? "",
     };
-    delivery.status = "inspected";
+    delivery.status = DELIVERY_STATUS.INSPECTED as DeliveryStatus;
     appendHistory(
       delivery,
-      "inspected",
+      DELIVERY_STATUS.INSPECTED,
       inspectionData.notes ?? "Inspection recorded",
       {
         _id: req.user!._id,
@@ -436,7 +602,7 @@ router.put(
     );
     await delivery.save();
     invalidateStaffSummaryCache();
-    res.json({ success: true, delivery: delivery.toObject() });
+    res.json({ success: true, delivery: toDeliveryJson(delivery) });
   },
 );
 

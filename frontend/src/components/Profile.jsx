@@ -6,15 +6,25 @@ import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 import { setUser } from "@/redux/authSlice";
+import { getAuthHeaderFromStorage } from "@/utils/authHeader";
+import {
+  USERS_ME_API_END_POINT,
+  USERS_ME_PASSWORD_API_END_POINT,
+  VENDOR_ME_API_END_POINT,
+  VENDOR_CATEGORIES,
+} from "@/utils/constant";
+import { SESSION_ROLE } from "@/constants/userRoles";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 const Profile = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((store) => store.auth);
   const currentRole = String(user?.role || "").toLowerCase();
-  const isAdmin = currentRole === "admin";
-  const isStaff = currentRole === "staff";
-  const isVendor = currentRole === "vendor";
+  const isAdmin = currentRole === SESSION_ROLE.ADMIN;
+  const isStaff = currentRole === SESSION_ROLE.PROCUREMENT_OFFICER;
+  const isVendor = currentRole === SESSION_ROLE.VENDOR;
 
   const [loading, setLoading] = useState(false);
   const [savingInfo, setSavingInfo] = useState(false);
@@ -80,7 +90,11 @@ const Profile = () => {
     const loadMe = async () => {
       try {
         setLoading(true);
-        const res = await axios.get("/api/users/me");
+        const headers = getAuthHeaderFromStorage();
+        const res = await axios.get(USERS_ME_API_END_POINT, {
+          withCredentials: true,
+          headers,
+        });
         const me = res?.data?.user;
         setProfile(me);
         setPersonalForm({
@@ -126,7 +140,7 @@ const Profile = () => {
           }),
         );
       } catch (error) {
-        toast.error(error?.response?.data?.message || "Failed to load profile");
+        toast.error(getApiErrorMessage(error, "Failed to load profile"));
       } finally {
         setLoading(false);
       }
@@ -148,7 +162,11 @@ const Profile = () => {
         fd.append("profilePhoto", profilePhotoFile);
         payload = fd;
         config = {
-          headers: { "Content-Type": "multipart/form-data" },
+          headers: {
+            ...getAuthHeaderFromStorage(),
+            "Content-Type": "multipart/form-data",
+          },
+          withCredentials: true,
         };
       } else if (removeProfilePhoto) {
         payload = {
@@ -156,7 +174,11 @@ const Profile = () => {
           profilePhoto: "",
         };
       }
-      const res = await axios.patch("/api/users/me", payload, config);
+      const res = await axios.patch(USERS_ME_API_END_POINT, payload, {
+        withCredentials: true,
+        headers: getAuthHeaderFromStorage(),
+        ...(config || {}),
+      });
       const me = res?.data?.user;
       setProfile(me);
       setProfilePhotoFile(null);
@@ -177,7 +199,7 @@ const Profile = () => {
       );
       toast.success("Personal information updated");
     } catch (error) {
-      toast.error(error?.response?.data?.message || "Failed to update profile");
+      toast.error(getApiErrorMessage(error, "Failed to update profile"));
     } finally {
       setSavingInfo(false);
     }
@@ -195,10 +217,17 @@ const Profile = () => {
     }
     try {
       setSavingPassword(true);
-      await axios.patch("/api/users/me/password", {
-        currentPassword: securityForm.currentPassword,
-        newPassword: securityForm.newPassword,
-      });
+      await axios.patch(
+        USERS_ME_PASSWORD_API_END_POINT,
+        {
+          currentPassword: securityForm.currentPassword,
+          newPassword: securityForm.newPassword,
+        },
+        {
+          withCredentials: true,
+          headers: getAuthHeaderFromStorage(),
+        },
+      );
       setSecurityForm({
         currentPassword: "",
         newPassword: "",
@@ -206,9 +235,7 @@ const Profile = () => {
       });
       toast.success("Password updated successfully");
     } catch (error) {
-      toast.error(
-        error?.response?.data?.message || "Failed to update password",
-      );
+      toast.error(getApiErrorMessage(error, "Failed to update password"));
     } finally {
       setSavingPassword(false);
     }
@@ -227,25 +254,32 @@ const Profile = () => {
     if (!isVendor) return;
     try {
       setSavingVendorInfo(true);
-      const res = await axios.put("/api/v1/vendor/me", {
-        name: vendorForm.companyName,
-        email: vendorForm.companyEmail,
-        phoneNumber: vendorForm.companyPhone,
-        address: vendorForm.address,
-        province: vendorForm.province,
-        district: vendorForm.district,
-        website: vendorForm.website,
-        description: vendorForm.description,
-        category: vendorForm.businessCategory,
-        panNumber: vendorForm.panNumber,
-        registrationNumber: vendorForm.registrationNumber,
-        contactPerson: {
-          name: vendorForm.authorizedPersonName,
-          email: vendorForm.authorizedPersonEmail,
-          phone: vendorForm.authorizedPersonPhone,
+      const res = await axios.put(
+        VENDOR_ME_API_END_POINT,
+        {
+          name: vendorForm.companyName,
+          email: vendorForm.companyEmail,
+          phoneNumber: vendorForm.companyPhone,
+          address: vendorForm.address,
+          province: vendorForm.province,
+          district: vendorForm.district,
+          website: vendorForm.website,
+          description: vendorForm.description,
+          category: vendorForm.businessCategory,
+          panNumber: vendorForm.panNumber,
+          registrationNumber: vendorForm.registrationNumber,
+          contactPerson: {
+            name: vendorForm.authorizedPersonName,
+            email: vendorForm.authorizedPersonEmail,
+            phone: vendorForm.authorizedPersonPhone,
+          },
+          settlementEsewaId: vendorForm.settlementEsewaId,
         },
-        settlementEsewaId: vendorForm.settlementEsewaId,
-      });
+        {
+          withCredentials: true,
+          headers: getAuthHeaderFromStorage(),
+        },
+      );
       const updatedVendor = res?.data?.vendor;
       if (updatedVendor) {
         setProfile((prev) => ({
@@ -256,7 +290,7 @@ const Profile = () => {
       toast.success("Company details updated");
     } catch (error) {
       toast.error(
-        error?.response?.data?.message || "Failed to update company details",
+        getApiErrorMessage(error, "Failed to update company details"),
       );
     } finally {
       setSavingVendorInfo(false);
@@ -503,6 +537,27 @@ const Profile = () => {
                 }
                 placeholder="Website"
               />
+              <div className="space-y-1.5">
+                <Label className="text-sm text-slate-700">
+                  Business category
+                </Label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={vendorForm.businessCategory}
+                  onChange={(e) =>
+                    setVendorForm((p) => ({
+                      ...p,
+                      businessCategory: e.target.value,
+                    }))
+                  }
+                >
+                  {VENDOR_CATEGORIES.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <Input
                 value={vendorForm.authorizedPersonName}
                 onChange={(e) =>

@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
+import { getApiErrorMessage } from "@/utils/apiError";
 import { QUOTATION_API_END_POINT } from "@/utils/constant";
 
 export const submitQuotation = createAsyncThunk(
@@ -16,7 +17,7 @@ export const submitQuotation = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error submitting quotation"
+        getApiErrorMessage(error, "Error submitting quotation")
       );
     }
   }
@@ -36,7 +37,7 @@ export const getQuotationsByPurchaseRequest = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error fetching quotations"
+        getApiErrorMessage(error, "Error fetching quotations")
       );
     }
   }
@@ -53,7 +54,7 @@ export const getAllQuotations = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error fetching quotations"
+        getApiErrorMessage(error, "Error fetching quotations")
       );
     }
   }
@@ -72,7 +73,7 @@ export const getQuotationById = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error fetching quotation"
+        getApiErrorMessage(error, "Error fetching quotation")
       );
     }
   }
@@ -90,7 +91,7 @@ export const acceptQuotation = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error accepting quotation"
+        getApiErrorMessage(error, "Error accepting quotation")
       );
     }
   }
@@ -108,7 +109,7 @@ export const rejectQuotation = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error rejecting quotation"
+        getApiErrorMessage(error, "Error rejecting quotation")
       );
     }
   }

@@ -29,13 +29,26 @@ export type NotificationType =
   | 'announcement'
   | 'other';
 
+export type NotificationRoleTarget =
+  | 'ADMIN'
+  | 'PROCUREMENT_OFFICER'
+  | 'VENDOR';
+
 export interface INotification extends Document {
   user: mongoose.Types.ObjectId;
   title: string;
   body: string;
+  /** Virtual mirror of `body` for clients that expect a `message` field. */
+  message?: string;
   link: string;
   read: boolean;
+  /** Filled when the row transitions to read (supports later reporting / forensics). */
+  readAt?: Date;
   type: NotificationType;
+  /** Optional pointer into tenders, bids, deliveries, PRs, etc., for correlation. */
+  referenceId?: mongoose.Types.ObjectId;
+  /** Which role bucket this row was generated for (each user still has their own doc). */
+  roleTarget?: NotificationRoleTarget;
 }
 
 const NotificationSchema = new Schema<INotification>(
@@ -45,6 +58,14 @@ const NotificationSchema = new Schema<INotification>(
     body: { type: String, default: '' },
     link: { type: String, default: '' },
     read: { type: Boolean, default: false, index: true },
+    readAt: { type: Date, required: false },
+    referenceId: { type: Schema.Types.ObjectId, required: false, index: true },
+    roleTarget: {
+      type: String,
+      enum: ['ADMIN', 'PROCUREMENT_OFFICER', 'VENDOR'],
+      required: false,
+      index: true,
+    },
     type: {
       type: String,
       enum: [
@@ -81,10 +102,17 @@ const NotificationSchema = new Schema<INotification>(
   { timestamps: true }
 );
 
+NotificationSchema.virtual('message').get(function () {
+  return this.body;
+});
+
+NotificationSchema.set('toJSON', { virtuals: true });
+NotificationSchema.set('toObject', { virtuals: true });
+
 NotificationSchema.index({ user: 1, createdAt: -1, _id: -1 });
 NotificationSchema.index({ user: 1, read: 1 });
 
-/** Only new docs — avoid emailing on read/status updates. */
+/** Email hooks piggyback on inserts; updates to read state should stay silent. */
 NotificationSchema.pre('save', function (next) {
   if (this.isNew) {
     (this as INotification & { $locals?: { __notifyEmail?: boolean } }).$locals =

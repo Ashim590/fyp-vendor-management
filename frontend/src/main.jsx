@@ -8,7 +8,7 @@ import store, { persistor } from './redux/store.js'
 import { PersistGate } from 'redux-persist/integration/react'
 import axios from 'axios'
 
-// Ensure every axios request uses Bearer auth from localStorage.
+// Axios reads the token from localStorage on each request so refreshes stay authenticated.
 axios.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
   if (token) {

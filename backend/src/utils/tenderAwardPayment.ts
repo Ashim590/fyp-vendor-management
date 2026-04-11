@@ -61,6 +61,8 @@ export async function ensurePaymentForAwardedBid(
       body: `"${payment.tenderReference}" has been awarded to you. Amount NPR ${payment.amount} has been recorded. Procurement will complete payment; you can track status in My payments.`,
       link: '/my-payments',
       type: 'payment_pending',
+      referenceId: payment._id,
+      roleTarget: 'VENDOR',
     });
   }
 

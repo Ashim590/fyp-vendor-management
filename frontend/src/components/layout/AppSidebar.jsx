@@ -14,12 +14,14 @@ import {
   Gavel,
   LayoutDashboard,
   Truck,
+  MapPinned,
   UserCircle,
   Users,
 } from "lucide-react";
+import { SESSION_ROLE } from "@/constants/userRoles";
 
 const SIDEBAR_CONFIG = {
-  admin: [
+  [SESSION_ROLE.ADMIN]: [
     { name: "Dashboard", path: "/admin", icon: LayoutDashboard },
     {
       name: "Vendor Registrations",
@@ -32,25 +34,35 @@ const SIDEBAR_CONFIG = {
       icon: Building2,
     },
     { name: "Users", path: "/admin/users", icon: Users },
-    { name: "Approvals", path: "/approvals", icon: CheckCircle },
+    {
+      name: "Purchase Approvals",
+      path: "/approvals",
+      icon: CheckCircle,
+    },
     { name: "Tenders", path: "/tenders", icon: Gavel },
     { name: "Bids Monitor", path: "/bids-monitor", icon: ClipboardList },
     { name: "Payments", path: "/procurement/payments", icon: Banknote },
     { name: "Invoices", path: "/invoices", icon: Receipt },
     { name: "Deliveries", path: "/deliveries", icon: Truck },
+    { name: "Delivery audit map", path: "/deliveries/audit", icon: MapPinned },
   ],
-  staff: [
+  [SESSION_ROLE.PROCUREMENT_OFFICER]: [
     { name: "Dashboard", path: "/", icon: LayoutDashboard },
     { name: "Purchase Requests", path: "/purchase-requests", icon: FileText },
     { name: "Vendors", path: "/vendors", icon: Building2 },
-    { name: "Approvals", path: "/approvals", icon: CheckCircle },
+    {
+      name: "Purchase Approvals",
+      path: "/approvals",
+      icon: CheckCircle,
+    },
     { name: "Tenders", path: "/tenders", icon: Gavel },
     { name: "Bids Monitor", path: "/bids-monitor", icon: ClipboardList },
     { name: "Payments", path: "/procurement/payments", icon: Banknote },
     { name: "Invoices", path: "/invoices", icon: Receipt },
     { name: "Deliveries", path: "/deliveries", icon: Truck },
+    { name: "Delivery audit map", path: "/deliveries/audit", icon: MapPinned },
   ],
-  vendor: [
+  [SESSION_ROLE.VENDOR]: [
     { name: "Dashboard", path: "/", icon: LayoutDashboard },
     { name: "Tenders", path: "/tenders", icon: Gavel },
     { name: "Tender quotations", path: "/my-bids", icon: ClipboardList },
@@ -63,14 +75,20 @@ const SIDEBAR_CONFIG = {
 export function useWorkspaceNavIsActive() {
   const location = useLocation();
   return (path) => {
+    const currentTab = new URLSearchParams(location.search).get("tab");
     if (path.startsWith("/admin?")) {
       const q = path.split("?")[1] || "";
       const expected = new URLSearchParams(q).get("tab");
-      const current = new URLSearchParams(location.search).get("tab");
-      return location.pathname === "/admin" && expected === current;
+      return location.pathname === "/admin" && expected === currentTab;
     }
     if (path === "/") return location.pathname === "/";
-    if (path === "/admin") return location.pathname === "/admin";
+    if (path === "/admin") {
+      // Treat /admin as overview only; don't also mark it active on /admin?tab=vendors.
+      return (
+        location.pathname === "/admin" &&
+        (currentTab === null || currentTab === "overview")
+      );
+    }
     if (path === "/purchase-requests") {
       return (
         location.pathname.startsWith("/purchase-requests") ||
@@ -119,7 +137,7 @@ function SidebarNavLink({
     <Link
       to={to}
       onClick={onClick}
-      className={`group relative flex min-w-0 items-center gap-3 rounded-xl py-2.5 pl-3 pr-2 text-sm transition-all duration-200 ease-out ${
+      className={`group relative flex min-w-0 items-center gap-3 rounded-xl py-3 pl-3 pr-2 text-sm transition-all duration-200 ease-out sm:py-2.5 ${
         active
           ? "bg-white text-slate-900 shadow-md shadow-teal-900/5 ring-1 ring-teal-200/60"
           : "text-slate-600 hover:bg-white/90 hover:text-slate-900 hover:shadow-sm hover:ring-1 hover:ring-sky-100"
@@ -141,7 +159,7 @@ function SidebarNavLink({
         <Icon className="h-[18px] w-[18px]" strokeWidth={active ? 2.25 : 2} />
       </span>
       <span
-        className={`min-w-0 flex-1 truncate ${active ? "font-semibold" : "font-medium"}`}
+        className="min-w-0 flex-1 break-words text-[13px] font-medium leading-snug"
       >
         {children}
       </span>
@@ -177,9 +195,9 @@ export function WorkspaceSidebarLinks({ onNavigate, className = "" }) {
         Workspace
       </p>
       <h2 className="mt-1.5 text-lg font-bold tracking-tight text-slate-800">
-        {user.role === "admin"
+        {user.role === SESSION_ROLE.ADMIN
           ? "Admin Panel"
-          : user.role === "staff"
+          : user.role === SESSION_ROLE.PROCUREMENT_OFFICER
             ? "Procurement"
             : "Vendor Portal"}
       </h2>

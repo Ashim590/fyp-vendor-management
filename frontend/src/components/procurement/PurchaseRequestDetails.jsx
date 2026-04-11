@@ -25,13 +25,16 @@ import {
   Clock,
   Package,
 } from "lucide-react";
+import { SESSION_ROLE } from "@/constants/userRoles";
+import { LoadingState } from "../ui/loading-state";
+
 const PurchaseRequestDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const { user } = useSelector((store) => store.auth);
   const canOpenVendorProfile =
-    user?.role === "admin" || user?.role === "staff";
+    user?.role === SESSION_ROLE.ADMIN || user?.role === SESSION_ROLE.PROCUREMENT_OFFICER;
   const {
     currentPurchaseRequest: purchaseRequest,
     loading,
@@ -72,7 +75,7 @@ const PurchaseRequestDetails = () => {
   };
 
   const isAdmin = user?.role === "admin";
-  const isStaffOfficer = user?.role === "staff";
+  const isStaffOfficer = user?.role === SESSION_ROLE.PROCUREMENT_OFFICER;
   const requesterRaw = purchaseRequest?.requester;
   const requesterId =
     requesterRaw &&
@@ -526,9 +529,11 @@ const PurchaseRequestDetails = () => {
                       No linked tender.
                     </p>
                   ) : loadingBids ? (
-                    <p className="text-gray-500 text-center py-6">
-                      Loading bids...
-                    </p>
+                    <LoadingState
+                      variant="compact"
+                      label="Loading bids…"
+                      className="py-6"
+                    />
                   ) : relatedBids && relatedBids.length > 0 ? (
                     <div className="space-y-4">
                       {relatedBids.map((bid) => (

@@ -7,6 +7,7 @@ import { APPLICATION_API_END_POINT, JOB_API_END_POINT } from '@/utils/constant';
 import { setSingleJob } from '@/redux/jobSlice';
 import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'sonner';
+import { getApiErrorMessage } from '@/utils/apiError';
 
 const JobDescription = () => {
     const {singleJob} = useSelector(store => store.job);
@@ -30,7 +31,7 @@ const JobDescription = () => {
 
             }
         } catch (error) {
-            toast.error(error?.response?.data?.message || "Could not submit application.");
+            toast.error(getApiErrorMessage(error, "Could not submit application."));
         }
     }
 

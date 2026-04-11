@@ -21,7 +21,7 @@ import {
   TableRow,
 } from "../ui/table";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { LoadingState } from "../ui/loading-state";
 import { cn } from "@/lib/utils";
 
 export default function VendorPayments() {
@@ -173,8 +173,8 @@ export default function VendorPayments() {
         <TableBody>
           {loading ? (
             <TableRow>
-              <TableCell colSpan={5} className="py-12 text-center text-slate-500">
-                <Loader2 className="inline h-5 w-5 animate-spin text-teal-600" />
+              <TableCell colSpan={5} className="p-0">
+                <LoadingState variant="table" />
               </TableCell>
             </TableRow>
           ) : payments.length === 0 ? (

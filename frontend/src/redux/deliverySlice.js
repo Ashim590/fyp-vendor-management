@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
+import { getApiErrorMessage } from "@/utils/apiError";
 import { DELIVERY_API_END_POINT } from "@/utils/constant";
 
 export const createDelivery = createAsyncThunk(
@@ -16,7 +17,7 @@ export const createDelivery = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error creating delivery"
+        getApiErrorMessage(error, "Error creating delivery")
       );
     }
   }
@@ -33,7 +34,7 @@ export const getAllDeliveries = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error fetching deliveries"
+        getApiErrorMessage(error, "Error fetching deliveries")
       );
     }
   }
@@ -50,7 +51,7 @@ export const getMyDeliveries = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error fetching my deliveries"
+        getApiErrorMessage(error, "Error fetching my deliveries")
       );
     }
   }
@@ -69,7 +70,7 @@ export const getDeliveryById = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error fetching delivery"
+        getApiErrorMessage(error, "Error fetching delivery")
       );
     }
   }
@@ -89,7 +90,26 @@ export const receiveDelivery = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error receiving delivery"
+        getApiErrorMessage(error, "Error receiving delivery")
+      );
+    }
+  }
+);
+
+/** Procurement officer only — PATCH /confirm with browser GPS + optional proof image (data URL). */
+export const confirmDelivery = createAsyncThunk(
+  "delivery/confirmDelivery",
+  async ({ deliveryId, body }, { rejectWithValue }) => {
+    try {
+      const response = await axios.patch(
+        `${DELIVERY_API_END_POINT}/${deliveryId}/confirm`,
+        body,
+        { withCredentials: true }
+      );
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(
+        getApiErrorMessage(error, "Error confirming delivery")
       );
     }
   }
@@ -109,7 +129,7 @@ export const inspectDelivery = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error inspecting delivery"
+        getApiErrorMessage(error, "Error inspecting delivery")
       );
     }
   }
@@ -127,7 +147,7 @@ export const updateDeliveryStatus = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error updating status"
+        getApiErrorMessage(error, "Error updating status")
       );
     }
   }
@@ -145,7 +165,7 @@ export const recordDeliveryDelay = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error recording delay"
+        getApiErrorMessage(error, "Error recording delay")
       );
     }
   }
@@ -163,7 +183,7 @@ export const addDeliveryComment = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error adding delivery comment"
+        getApiErrorMessage(error, "Error adding delivery comment")
       );
     }
   }
@@ -258,6 +278,20 @@ const deliverySlice = createSlice({
         state.success = true;
       })
       .addCase(receiveDelivery.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(confirmDelivery.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(confirmDelivery.fulfilled, (state, action) => {
+        state.loading = false;
+        state.error = null;
+        state.currentDelivery = action.payload.delivery;
+        state.success = true;
+      })
+      .addCase(confirmDelivery.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })

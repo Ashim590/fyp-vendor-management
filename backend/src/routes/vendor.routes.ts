@@ -125,6 +125,7 @@ router.post(
             title: "Vendor resubmitted for review",
             body: `“${String(name).trim()}” (${emailNorm}) updated their profile after rejection and is pending review again.`,
             type: "vendor_pending_review",
+            referenceId: vendor!._id,
           });
         }
       } else {
@@ -134,6 +135,7 @@ router.post(
           title: "New vendor pending review",
           body: `“${String(name).trim()}” (${emailNorm}) completed the vendor profile form and awaits approval.`,
           type: "vendor_pending_review",
+          referenceId: vendor!._id,
         });
       }
 
@@ -521,6 +523,8 @@ router.put(
           body: `Your vendor profile "${vendor.name}" has been approved.`,
           link: "/vendor-profile",
           type: "vendor_approved",
+          referenceId: vendor._id,
+          roleTarget: "VENDOR",
         });
       }
 
@@ -529,6 +533,7 @@ router.put(
         title: "Vendor approved",
         body: `“${vendor.name}” is now approved.${actor ? ` Action: ${actor}.` : ""}`,
         type: "vendor_approved_staff",
+        referenceId: vendor._id,
         excludeUserId: req.user?._id ?? null,
       });
 
@@ -572,6 +577,8 @@ router.put(
           body: `Your vendor profile "${vendor.name}" was rejected.${rejectionReason ? ` Reason: ${rejectionReason}` : ""}`,
           link: "/vendor-profile",
           type: "vendor_rejected",
+          referenceId: vendor._id,
+          roleTarget: "VENDOR",
         });
       }
 
@@ -580,6 +587,7 @@ router.put(
         title: "Vendor rejected",
         body: `“${vendor.name}” was rejected.${rejectionReason ? ` Reason: ${rejectionReason}` : ""}${actor ? ` Action: ${actor}.` : ""}`,
         type: "vendor_rejected_staff",
+        referenceId: vendor._id,
         excludeUserId: req.user?._id ?? null,
       });
 

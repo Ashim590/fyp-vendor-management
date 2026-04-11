@@ -8,6 +8,7 @@ import { getAuthHeaderFromStorage } from "@/utils/authHeader";
 import { motion } from "framer-motion";
 import { LoadingSkeleton } from "../shared/LoadingSkeleton";
 import { Bell, FileText, Users, Activity } from "lucide-react";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 const AdminDashboardCharts = React.lazy(() => import("./AdminDashboardCharts"));
 
@@ -94,8 +95,10 @@ const AdminDashboard = () => {
       } catch (err) {
         console.error(err);
         setError(
-          err.response?.data?.message ||
+          getApiErrorMessage(
+            err,
             "Failed to load admin analytics. Please try again.",
+          ),
         );
       } finally {
         setLoading(false);

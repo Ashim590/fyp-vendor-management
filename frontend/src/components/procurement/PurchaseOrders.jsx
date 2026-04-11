@@ -16,13 +16,16 @@ import { toast } from "sonner";
 import { Search, Eye, FileText, Truck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { WORKSPACE_DATA_TABLE_CLASS } from "../layout/WorkspacePageLayout";
+import { LoadingState } from "../ui/loading-state";
 import { cn } from "@/lib/utils";
+import { SESSION_ROLE } from "@/constants/userRoles";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 const PurchaseOrders = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((store) => store.auth);
   const canOpenVendorProfile =
-    user?.role === "admin" || user?.role === "staff";
+    user?.role === SESSION_ROLE.ADMIN || user?.role === SESSION_ROLE.PROCUREMENT_OFFICER;
   const { purchaseOrders, loading, error } = useSelector(
     (store) => store.purchaseOrder
   );
@@ -35,7 +38,7 @@ const PurchaseOrders = () => {
 
   useEffect(() => {
     if (error) {
-      toast.error(error);
+      toast.error(getApiErrorMessage(error, "Could not load purchase orders."));
     }
   }, [error]);
 
@@ -138,8 +141,8 @@ const PurchaseOrders = () => {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center">
-                    Loading...
+                  <TableCell colSpan={8} className="p-0">
+                    <LoadingState variant="table" />
                   </TableCell>
                 </TableRow>
               ) : filteredOrders.length === 0 ? (

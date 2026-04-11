@@ -9,10 +9,10 @@ const TOTAL_BAND = [217, 234, 247];
 const DEFAULT_ORG = {
   name: "Paropakar VendorNet",
   addressLine1: "Paropakar — Procurement Office",
-  addressLine2: "Pulchowk, Lalitpur",
-  addressLine3: "Bagmati Province, Nepal",
-  phone: "+977-1-XXXXXXX",
-  email: "procurement@paropakar.org.np",
+  addressLine2: "Nayagau, Pokhara",
+  addressLine3: "",
+  phone: "9713680380",
+  email: "admin@paropakar.org",
 };
 
 function fmtMoney(n) {
@@ -33,6 +33,17 @@ function fmtDate(d) {
   } catch {
     return "—";
   }
+}
+
+function fitText(doc, text, maxWidthMm) {
+  const raw = String(text ?? "");
+  if (!raw) return "—";
+  if (doc.getTextWidth(raw) <= maxWidthMm) return raw;
+  let s = raw;
+  while (s.length > 1 && doc.getTextWidth(`${s}…`) > maxWidthMm) {
+    s = s.slice(0, -1);
+  }
+  return `${s}…`;
 }
 
 /**
@@ -149,11 +160,16 @@ export function downloadInvoicePdf(invoice, options = {}) {
           },
         ];
 
-  const subtotal = items.reduce((s, it) => s + (Number(it.totalPrice) || 0), 0);
+  const displayedVatRate = 13;
+  const lineItemsTotal = items.reduce(
+    (s, it) => s + (Number(it.totalPrice) || 0),
+    0,
+  );
   const discount = 0;
-  const taxRate = 0;
-  const taxAmt = 0;
-  const total = Number(invoice.totalAmount) || subtotal;
+  const total = Number(invoice.totalAmount) || lineItemsTotal;
+  // Quotation flow uses VAT 13%; show invoice math consistently from final total.
+  const subtotal = total / (1 + displayedVatRate / 100);
+  const taxAmt = total - subtotal;
 
   /* —— Table —— */
   const tableW = pageW - 2 * m;
@@ -203,11 +219,8 @@ export function downloadInvoicePdf(invoice, options = {}) {
     doc.setTextColor(30, 41, 59);
 
     const desc = [it.description, it.specifications].filter(Boolean).join(" · ");
-    const descShort =
-      desc.length > 48 ? `${desc.slice(0, 45)}…` : desc || "—";
-    const nameShort = String(it.itemName || "—");
-    const nameOne =
-      nameShort.length > 22 ? `${nameShort.slice(0, 19)}…` : nameShort;
+    const descShort = fitText(doc, desc || "—", c3 - c2 - 2);
+    const nameOne = fitText(doc, String(it.itemName || "—"), c2 - c1 - 2);
 
     doc.text(String(idx + 1), c0 + 1, y + 4.8);
     doc.text(nameOne, c1 + 1, y + 4.8);
@@ -269,7 +282,7 @@ export function downloadInvoicePdf(invoice, options = {}) {
 
   line("Subtotal", `NPR ${fmtMoney(subtotal)}`);
   line("Discount", `NPR ${fmtMoney(discount)}`);
-  line("Tax rate", `${taxRate.toFixed(2)}%`);
+  line("VAT rate", `${displayedVatRate.toFixed(2)}%`);
   line("Tax", `NPR ${fmtMoney(taxAmt)}`);
 
   ty += 1;

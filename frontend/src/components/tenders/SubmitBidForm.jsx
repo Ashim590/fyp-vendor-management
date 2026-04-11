@@ -1,25 +1,53 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import axios from "axios";
 import { BID_API_END_POINT } from "@/utils/constant";
 import { Button } from "../ui/button";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/utils/apiError";
 import { useSelector } from "react-redux";
-import { useEffect } from "react";
+import { ChevronDown } from "lucide-react";
+import {
+  buildTechnicalProposalBlob,
+  mergeSectionsToProposalText,
+  parseTechnicalProposalSections,
+} from "@/utils/technicalProposal";
+
+const VAT_RATE = 0.13;
+
+function parseFinancialProposalNotes(fin) {
+  const s = String(fin || "");
+  const out = {
+    quotationValidity: "",
+    paymentTerms: "",
+    esewaId: "",
+    merchantName: "",
+  };
+  const qm = s.match(/Valid until:\s*([^\n]+)/i);
+  if (qm) out.quotationValidity = qm[1].trim();
+  const payIdx = s.search(/PAYMENT TERMS\s*\n/i);
+  if (payIdx >= 0) {
+    let chunk = s.slice(payIdx).replace(/^PAYMENT TERMS\s*\n/i, "");
+    const esewaIdx = chunk.search(/ESEWA PAYMENT DETAILS/i);
+    if (esewaIdx >= 0) chunk = chunk.slice(0, esewaIdx);
+    out.paymentTerms = chunk.trim();
+  }
+  const eid = s.match(/eSewa ID:\s*([^\n]+)/i);
+  if (eid) out.esewaId = eid[1].replace(/[—\-]/g, "").trim();
+  const mn = s.match(/Merchant Name:\s*([^\n]+)/i);
+  if (mn) out.merchantName = mn[1].replace(/[—\-]/g, "").trim();
+  return out;
+}
 
 /**
- * Tender quotation submission (price + proposal + optional attachments).
- * Backend stores this as a Bid linked to tender + vendor.
+ * Tender quotation: price + one proposal field + optional extras.
  */
-const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
+const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel, existingBid = null }) => {
   const { user } = useSelector((store) => store.auth);
   const [loading, setLoading] = useState(false);
   const [amount, setAmount] = useState("");
-  const [scopeOfWork, setScopeOfWork] = useState("");
-  const [deliveryTimeline, setDeliveryTimeline] = useState("");
-  const [compliance, setCompliance] = useState("");
-  const [differentiators, setDifferentiators] = useState("");
+  /** Single box replaces four separate proposal fields. */
+  const [proposalText, setProposalText] = useState("");
   const [quotationValidity, setQuotationValidity] = useState("");
-  /** Numeric calendar days from contract award — used for automated quotation comparison on procurement side. */
   const [deliveryDaysOffer, setDeliveryDaysOffer] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("");
   const [esewaId, setEsewaId] = useState("");
@@ -36,8 +64,6 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
     }
     return String(user?.name || "").trim();
   }, [user]);
-
-  const VAT_RATE = 0.13;
 
   const round2 = (n) => Math.round(Number(n || 0) * 100) / 100;
 
@@ -72,9 +98,19 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
       .filter(Boolean);
   }, [tender]);
 
+  const existingAttachmentNames = useMemo(() => {
+    if (!Array.isArray(existingBid?.documents)) return [];
+    return existingBid.documents.map((d) =>
+      String(d.name || "").toLowerCase(),
+    );
+  }, [existingBid]);
+
   const selectedDocNames = useMemo(
-    () => files.map((f) => String(f?.name || "").toLowerCase()),
-    [files],
+    () => [
+      ...existingAttachmentNames,
+      ...files.map((f) => String(f?.name || "").toLowerCase()),
+    ],
+    [existingAttachmentNames, files],
   );
 
   const missingRequiredDocs = useMemo(() => {
@@ -87,6 +123,47 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
 
   useEffect(() => {
     let mounted = true;
+
+    const hydrateFromSubmittedBid = (bid) => {
+      if (bid.amountExcludingVat != null && Number(bid.amountExcludingVat) >= 0) {
+        setAmount(String(bid.amountExcludingVat));
+      } else if (bid.amount != null && Number(bid.amount) > 0) {
+        const grand = Number(bid.amount);
+        const ex = round2(grand / (1 + VAT_RATE));
+        setAmount(String(ex));
+      }
+      const sections = parseTechnicalProposalSections(bid.technicalProposal);
+      const hasSections = Object.values(sections).some(Boolean);
+      if (hasSections) {
+        setProposalText(mergeSectionsToProposalText(sections));
+      } else if (String(bid.technicalProposal || "").trim()) {
+        setProposalText(String(bid.technicalProposal).trim());
+      }
+      if (bid.deliveryDaysOffer != null && Number(bid.deliveryDaysOffer) >= 0) {
+        setDeliveryDaysOffer(String(bid.deliveryDaysOffer));
+      } else {
+        setDeliveryDaysOffer("");
+      }
+      const fin = parseFinancialProposalNotes(bid.financialProposal);
+      setQuotationValidity(fin.quotationValidity);
+      setPaymentTerms(fin.paymentTerms || String(bid.financialProposal || "").trim());
+      setEsewaId(fin.esewaId);
+      setMerchantName(fin.merchantName);
+      setDeclarationAccepted(true);
+      setFiles([]);
+    };
+
+    const bidTenderId = existingBid
+      ? String(existingBid.tender?._id || existingBid.tender || "")
+      : "";
+    if (existingBid && bidTenderId === String(tenderId)) {
+      hydrateFromSubmittedBid(existingBid);
+      setDraftLoaded(true);
+      return () => {
+        mounted = false;
+      };
+    }
+
     const key = `quotationDraft:${tenderId}`;
     const fromLocal = localStorage.getItem(key);
     if (fromLocal) {
@@ -94,10 +171,7 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
         const d = JSON.parse(fromLocal);
         if (!mounted) return;
         setAmount(String(d.amount || ""));
-        setScopeOfWork(String(d.scopeOfWork || ""));
-        setDeliveryTimeline(String(d.deliveryTimeline || ""));
-        setCompliance(String(d.compliance || ""));
-        setDifferentiators(String(d.differentiators || ""));
+        setProposalText(String(d.proposalText ?? d.scopeOfWork ?? ""));
         setQuotationValidity(String(d.quotationValidity || ""));
         setPaymentTerms(String(d.paymentTerms || ""));
         setEsewaId(String(d.esewaId || ""));
@@ -106,7 +180,7 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
           d.deliveryDaysOffer != null ? String(d.deliveryDaysOffer) : "",
         );
       } catch {
-        // ignore local parse failures
+        // ignore
       }
     }
     axios
@@ -119,14 +193,14 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
         } else {
           setAmount(String(b.amount ?? ""));
         }
-        const tech = String(b.technicalProposal || "");
-        setScopeOfWork(tech);
-        setDeliveryTimeline("");
+        const sections = parseTechnicalProposalSections(b.technicalProposal);
+        const merged = mergeSectionsToProposalText(sections);
+        setProposalText(
+          merged || String(b.technicalProposal || "").trim(),
+        );
         if (b.deliveryDaysOffer != null && Number(b.deliveryDaysOffer) >= 0) {
           setDeliveryDaysOffer(String(b.deliveryDaysOffer));
         }
-        setCompliance("");
-        setDifferentiators("");
         setQuotationValidity("");
         setPaymentTerms(String(b.financialProposal || ""));
       })
@@ -137,7 +211,7 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
     return () => {
       mounted = false;
     };
-  }, [tenderId]);
+  }, [tenderId, existingBid?._id]);
 
   useEffect(() => {
     if (!draftLoaded) return;
@@ -146,10 +220,7 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
       key,
       JSON.stringify({
         amount,
-        scopeOfWork,
-        deliveryTimeline,
-        compliance,
-        differentiators,
+        proposalText,
         quotationValidity,
         paymentTerms,
         esewaId,
@@ -161,10 +232,7 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
     draftLoaded,
     tenderId,
     amount,
-    scopeOfWork,
-    deliveryTimeline,
-    compliance,
-    differentiators,
+    proposalText,
     quotationValidity,
     paymentTerms,
     esewaId,
@@ -175,19 +243,7 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
   const saveDraft = async () => {
     setSavingDraft(true);
     try {
-      const technicalProposal = [
-        "SCOPE OF WORK",
-        scopeOfWork.trim(),
-        "",
-        "DELIVERY TIMELINE",
-        deliveryTimeline.trim(),
-        "",
-        "COMPLIANCE",
-        compliance.trim(),
-        "",
-        "DIFFERENTIATORS",
-        differentiators.trim(),
-      ].join("\n");
+      const technicalProposal = buildTechnicalProposalBlob(proposalText);
       const formData = new FormData();
       formData.append("tenderId", tenderId);
       const base = Number(amount || 0);
@@ -211,7 +267,7 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
       });
       toast.success("Draft saved.");
     } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to save draft.");
+      toast.error(getApiErrorMessage(err, "Failed to save draft."));
     } finally {
       setSavingDraft(false);
     }
@@ -223,13 +279,8 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
       toast.error("Please enter a valid quoted price.");
       return;
     }
-    if (
-      !scopeOfWork.trim() ||
-      !deliveryTimeline.trim() ||
-      !compliance.trim() ||
-      !differentiators.trim()
-    ) {
-      toast.error("Please complete all required proposal sections.");
+    if (!proposalText.trim()) {
+      toast.error("Please complete your technical proposal.");
       return;
     }
     if (missingRequiredDocs.length > 0) {
@@ -244,19 +295,7 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
     }
     setLoading(true);
     try {
-      const technicalProposal = [
-        "SCOPE OF WORK",
-        scopeOfWork.trim(),
-        "",
-        "DELIVERY TIMELINE",
-        deliveryTimeline.trim(),
-        "",
-        "COMPLIANCE",
-        compliance.trim(),
-        "",
-        "DIFFERENTIATORS",
-        differentiators.trim(),
-      ].join("\n");
+      const technicalProposal = buildTechnicalProposalBlob(proposalText);
 
       const financialNotes = [
         quotationValidity.trim()
@@ -297,232 +336,191 @@ const SubmitBidForm = ({ tenderId, tender, onSuccess, onCancel }) => {
         headers: { "Content-Type": "multipart/form-data" },
         withCredentials: true,
       });
-      toast.success("Quotation submitted.");
+      const isUpdate = Boolean(existingBid?._id);
+      toast.success(isUpdate ? "Quotation updated." : "Quotation submitted.");
       localStorage.removeItem(`quotationDraft:${tenderId}`);
       onSuccess();
     } catch (err) {
-      toast.error(
-        err.response?.data?.message || "Failed to submit quotation.",
-      );
+      toast.error(getApiErrorMessage(err, "Failed to submit quotation."));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5 max-w-3xl">
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">
-          Online quotation submission
+    <form onSubmit={handleSubmit} className="mx-auto max-w-2xl space-y-4">
+      <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+          Tender
         </p>
-        <div className="grid gap-2 text-sm text-slate-700 md:grid-cols-2">
-          <p>
-            <span className="font-semibold">Reference:</span>{" "}
-            {tender?.referenceNumber || "—"}
-          </p>
-          <p>
-            <span className="font-semibold">Status:</span>{" "}
-            {String(tender?.status || "").toUpperCase() || "—"}
-          </p>
-          <p>
-            <span className="font-semibold">Procurement title:</span>{" "}
-            {tender?.title || "—"}
-          </p>
-          <p>
-            <span className="font-semibold">Category:</span>{" "}
-            {tender?.category || "—"}
-          </p>
-          <p>
-            <span className="font-semibold">Budget:</span> NPR{" "}
-            {Number(tender?.budget || 0).toLocaleString("en-NP")}
-          </p>
-          <p>
-            <span className="font-semibold">Vendor / Company:</span>{" "}
-            {vendorOrCompanyName || "—"}
-          </p>
+        <p className="mt-1 text-base font-semibold text-slate-900">
+          {tender?.title || "—"}{" "}
+          <span className="font-normal text-slate-500">
+            ({tender?.referenceNumber || "—"})
+          </span>
+        </p>
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
+          <span>Budget: NPR {Number(tender?.budget || 0).toLocaleString("en-NP")}</span>
+          <span>·</span>
+          <span>{tender?.category || "—"}</span>
+          <span>·</span>
+          <span>{vendorOrCompanyName || "—"}</span>
         </div>
-        <p className="mt-3 whitespace-pre-wrap rounded-md border bg-white p-3 text-sm text-slate-700">
-          <span className="font-semibold">Requirement:</span>
-          {"\n"}
-          {requirementText}
-        </p>
-        {requiredDocs.length > 0 && (
-          <div className="mt-3 rounded-md border bg-white p-3">
-            <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">
-              Required documents checklist
+        <details className="mt-3 rounded-lg border border-slate-200 bg-white">
+          <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-slate-800">
+            Requirement details
+          </summary>
+          <div className="border-t border-slate-100 px-3 py-2">
+            <p className="whitespace-pre-wrap text-sm text-slate-700">
+              {requirementText}
             </p>
-            <ul className="list-disc pl-5 text-sm text-slate-700 space-y-1">
-              {requiredDocs.map((d) => (
-                <li key={d}>{d}</li>
-              ))}
-            </ul>
+            {requiredDocs.length > 0 && (
+              <ul className="mt-2 list-disc pl-5 text-sm text-slate-600">
+                {requiredDocs.map((d) => (
+                  <li key={d}>Required file: {d}</li>
+                ))}
+              </ul>
+            )}
           </div>
-        )}
+        </details>
       </div>
 
-      <div className="rounded-xl border p-4 space-y-3">
-        <h3 className="font-semibold text-slate-900">Section 1: Quoted Price</h3>
+      <div className="rounded-xl border border-slate-200 p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-slate-900">Price (NPR, excl. VAT)</h3>
+        <input
+          type="number"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          required
+          min="1"
+          className="w-full max-w-xs rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-2 focus:ring-teal-500/30"
+        />
+        <p className="text-sm text-slate-600">
+          VAT 13%: NPR{" "}
+          {vatAmount.toLocaleString("en-NP", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}{" "}
+          · Total incl. VAT: NPR{" "}
+          {totalAmount.toLocaleString("en-NP", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}
+        </p>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
-            Quoted price (NPR) <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="number"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            required
-            min="1"
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500"
-          />
-        </div>
-        <div className="grid gap-2 text-sm text-slate-700 md:grid-cols-3">
-          <p className="rounded-md border bg-slate-50 px-3 py-2">
-            VAT (13%): NPR{" "}
-            {vatAmount.toLocaleString("en-NP", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}
-          </p>
-          <p className="rounded-md border bg-slate-50 px-3 py-2 md:col-span-2">
-            Total payable (incl. VAT): NPR{" "}
-            {totalAmount.toLocaleString("en-NP", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}
-          </p>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
-            Delivery lead time (optional)
+          <label className="mb-1 block text-sm text-slate-600">
+            Delivery lead time (days, optional)
           </label>
           <input
             type="number"
             min="0"
             value={deliveryDaysOffer}
             onChange={(e) => setDeliveryDaysOffer(e.target.value)}
-            placeholder="Days"
-            className="w-full max-w-md border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500"
+            placeholder="e.g. 14"
+            className="w-full max-w-xs rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-2 focus:ring-teal-500/30"
           />
         </div>
       </div>
 
-      <div className="rounded-xl border p-4 space-y-3">
-        <h3 className="font-semibold text-slate-900">Section 2: Proposal *</h3>
+      <div className="rounded-xl border border-slate-200 p-4 space-y-2">
+        <h3 className="text-sm font-semibold text-slate-900">
+          Technical proposal <span className="text-red-500">*</span>
+        </h3>
+        <p className="text-xs text-slate-500">
+          Describe how you will meet the requirement: scope, timeline, standards, and what
+          differentiates your offer. One field is enough.
+        </p>
         <textarea
-          value={scopeOfWork}
-          onChange={(e) => setScopeOfWork(e.target.value)}
-          rows={3}
+          value={proposalText}
+          onChange={(e) => setProposalText(e.target.value)}
+          rows={8}
           required
-          placeholder="Scope of work"
-          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
-        />
-        <textarea
-          value={deliveryTimeline}
-          onChange={(e) => setDeliveryTimeline(e.target.value)}
-          rows={2}
-          required
-          placeholder="Delivery timeline"
-          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
-        />
-        <textarea
-          value={compliance}
-          onChange={(e) => setCompliance(e.target.value)}
-          rows={2}
-          required
-          placeholder="Compliance statement"
-          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
-        />
-        <textarea
-          value={differentiators}
-          onChange={(e) => setDifferentiators(e.target.value)}
-          rows={3}
-          required
-          placeholder="Differentiators"
-          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-2 focus:ring-teal-500/30"
         />
       </div>
 
-      <div className="rounded-xl border p-4 space-y-3">
-        <h3 className="font-semibold text-slate-900">
-          Section 3: Financial / Pricing Notes (Optional)
-        </h3>
-        <input
-          type="text"
-          value={quotationValidity}
-          onChange={(e) => setQuotationValidity(e.target.value)}
-          placeholder="Quotation validity (e.g., April 30, 2026)"
-          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
-        />
-        <textarea
-          value={paymentTerms}
-          onChange={(e) => setPaymentTerms(e.target.value)}
-          rows={2}
-          placeholder="Payment terms"
-          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
-        />
-        <div className="grid gap-3 md:grid-cols-2">
+      <details className="group rounded-xl border border-slate-200 bg-white">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-sm font-medium text-slate-800 [&::-webkit-details-marker]:hidden">
+          <span>Optional: validity, payment terms, eSewa, attachments</span>
+          <ChevronDown className="h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="space-y-3 border-t border-slate-100 px-4 pb-4 pt-2">
           <input
             type="text"
-            value={esewaId}
-            onChange={(e) => setEsewaId(e.target.value)}
-            placeholder="eSewa ID (optional)"
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+            value={quotationValidity}
+            onChange={(e) => setQuotationValidity(e.target.value)}
+            placeholder="Quotation valid until (date)"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
-          <input
-            type="text"
-            value={merchantName}
-            onChange={(e) => setMerchantName(e.target.value)}
-            placeholder="Merchant name (optional)"
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+          <textarea
+            value={paymentTerms}
+            onChange={(e) => setPaymentTerms(e.target.value)}
+            rows={2}
+            placeholder="Payment terms (optional)"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
+          <div className="grid gap-2 sm:grid-cols-2">
+            <input
+              type="text"
+              value={esewaId}
+              onChange={(e) => setEsewaId(e.target.value)}
+              placeholder="eSewa ID (optional)"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+            <input
+              type="text"
+              value={merchantName}
+              onChange={(e) => setMerchantName(e.target.value)}
+              placeholder="Merchant name (optional)"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-500">Attachments</label>
+            <input
+              type="file"
+              multiple
+              accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+              onChange={(e) => setFiles(Array.from(e.target.files || []))}
+              className="w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border file:border-slate-200 file:bg-slate-50 file:px-3 file:py-2 file:text-sm"
+            />
+            {missingRequiredDocs.length > 0 && requiredDocs.length > 0 && (
+              <p className="mt-1 text-xs text-amber-700">
+                Still needed: {missingRequiredDocs.join(", ")}
+              </p>
+            )}
+          </div>
         </div>
-      </div>
+      </details>
 
-      <div className="rounded-xl border p-4 space-y-3">
-        <h3 className="font-semibold text-slate-900">
-          Section 4: Supporting Documents (Optional)
-        </h3>
+      <label className="flex items-start gap-2 rounded-xl border border-slate-200 p-4 text-sm text-slate-700">
         <input
-          type="file"
-          multiple
-          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
-          onChange={(e) => setFiles(Array.from(e.target.files || []))}
-          className="w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border file:border-slate-200 file:bg-slate-50 file:px-3 file:py-2 file:text-sm"
+          type="checkbox"
+          checked={declarationAccepted}
+          onChange={(e) => setDeclarationAccepted(e.target.checked)}
+          className="mt-0.5"
         />
-        {missingRequiredDocs.length > 0 && requiredDocs.length > 0 && (
-          <p className="text-xs text-amber-700">
-            Missing from upload: {missingRequiredDocs.join(", ")}
-          </p>
-        )}
-      </div>
-
-      <div className="rounded-xl border p-4 space-y-3">
-        <h3 className="font-semibold text-slate-900">Section 5: Declaration</h3>
-        <label className="flex items-start gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={declarationAccepted}
-            onChange={(e) => setDeclarationAccepted(e.target.checked)}
-            className="mt-0.5"
-          />
-          <span>
-            I confirm that all information provided is true, accurate, and
-            complete and I agree to the terms and conditions of Paropakar
-            VendorNet.
-          </span>
-        </label>
-      </div>
+        <span>
+          I confirm this quotation is accurate and I agree to Paropakar VendorNet terms.
+        </span>
+      </label>
 
       <div className="flex flex-wrap gap-2 pt-1">
         <Button type="button" variant="outline" disabled={savingDraft} onClick={saveDraft}>
-          {savingDraft ? "Saving draft..." : "Save draft"}
+          {savingDraft ? "Saving…" : "Save draft"}
         </Button>
         <Button
           type="submit"
           disabled={loading}
           className="bg-slate-900 hover:bg-slate-800"
         >
-          {loading ? "Submitting…" : "Submit quotation"}
+          {loading
+            ? existingBid?._id
+              ? "Updating…"
+              : "Submitting…"
+            : existingBid?._id
+              ? "Update quotation"
+              : "Submit quotation"}
         </Button>
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel

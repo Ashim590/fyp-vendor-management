@@ -94,6 +94,8 @@ router.post(
         body: `An eSewa payment has been initiated for invoice ${invoice.invoiceNumber} (NPR ${payment.amount}).`,
         link: "/invoices",
         type: "invoice_payment_pending",
+        referenceId: invoice._id,
+        roleTarget: "VENDOR",
       });
     }
 
@@ -275,6 +277,8 @@ router.all("/esewa/success", async (req: AuthRequest, res: Response) => {
             body: `Invoice ${invoice.invoiceNumber} has been paid via eSewa (NPR ${payment.amount}). View it under Invoices.`,
             link: "/invoices",
             type: "invoice_payment_paid",
+            referenceId: invoice._id,
+            roleTarget: "VENDOR",
           });
         }
       }

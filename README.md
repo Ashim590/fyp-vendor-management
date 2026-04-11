@@ -23,11 +23,13 @@ Paropakar VendorNet is a digital procurement and vendor management platform tail
 ### Project structure
 
 - **`backend/`** – Express API. **Entry:** `backend/src/server.ts` (compiled to `dist/server.js`; `npm start` runs that). Run **`npm run seed`** after `cd backend` to create demo admin/officer users (see script output for passwords).
-- **`frontend/`** – React SPA. **Entry:** `frontend/index.html` + `frontend/src/main.jsx`. **Vite config:** `frontend/vite.config.js` only (dev proxy `/api` → `VITE_PROXY_TARGET`, default `http://127.0.0.1:5000`).
+- **`frontend/`** – React SPA. **Entry:** `frontend/index.html` + `frontend/src/main.jsx`. **Vite config:** `frontend/vite.config.js` (dev proxy `/api` → backend `PORT` / `BACKEND_URL` from `backend/.env`).
 
-From the repo root, `npm run dev` runs backend and frontend together (see root `package.json`).
+From the repo root, run `npm install` once (installs `npm-run-all`), then `npm run dev` runs backend and frontend together. **`npm run verify`** builds both packages (same as CI).
 
-**Deploy (e.g. Render):** use root directory `backend` or `frontend` per service; do not use the pre-TS legacy tree (removed)—the live API is entirely under `backend/src/`.
+**Deploy (e.g. Render):** use service root directory `backend` or `frontend` per service—the live API is under `backend/src/`. Optional: `backend/Dockerfile` for container hosts.
+
+- **Production env templates:** `backend/.env.example`, `frontend/.env.production.example` (set `VITE_API_BASE_URL` before building the SPA if the API is on another domain).
 
 ### Deployment setup (Vercel + Render + MongoDB Atlas)
 
@@ -52,8 +54,8 @@ From the repo root, `npm run dev` runs backend and frontend together (see root `
     - `CLIENT_ORIGINS=https://<your-vercel-domain>` (comma-separate every SPA URL you use, e.g. both `*.vercel.app` and a custom domain, or login fails with a “network” error)
     - `BACKEND_URL=https://<your-render-service>.onrender.com`
     - `FRONTEND_URL=https://<your-vercel-domain>`
-  - Vercel frontend:
-    - `VITE_API_BASE_URL=https://<your-render-service>.onrender.com` (**required**; without it the app calls `/api` on Vercel and nothing responds)
+  - Vercel frontend (add under Project → Settings → Environment Variables → **Production**):
+    - `VITE_API_BASE_URL=https://<your-render-service>.onrender.com` (**required**; without it the app calls `/api` on Vercel and nothing responds). See `frontend/.env.production.example`.
 
 - Atlas checklist:
   - Create DB user with password and use `mongodb+srv://...` in `MONGO_URI`.

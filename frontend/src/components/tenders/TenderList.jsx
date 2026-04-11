@@ -8,6 +8,8 @@ import { Badge } from "../ui/badge";
 import { motion } from "framer-motion";
 import { LoadingSkeleton } from "../shared/LoadingSkeleton";
 import { toast } from "sonner";
+import { SESSION_ROLE } from "@/constants/userRoles";
+import { getApiErrorMessage } from "@/utils/apiError";
 import {
   WorkspacePageLayout,
   WorkspacePageHeader,
@@ -15,7 +17,8 @@ import {
   WORKSPACE_SELECT_CLASS,
 } from "../layout/WorkspacePageLayout";
 import { ConfirmDialog } from "../ui/confirm-dialog";
-import { BarChart3, ArrowUpRight, Eye } from "lucide-react";
+import { BarChart3, ArrowUpRight, Eye, Gavel, Inbox } from "lucide-react";
+import { EmptyState } from "../ui/empty-state";
 
 const statusConfig = {
   DRAFT: { label: "Draft", variant: "statusMuted" },
@@ -35,8 +38,8 @@ const TenderList = () => {
   const [selectedTenderIds, setSelectedTenderIds] = useState([]);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
-  const isOfficerOrAdmin = user?.role === "admin" || user?.role === "staff";
-  const isVendor = user?.role === "vendor";
+  const isOfficerOrAdmin = user?.role === SESSION_ROLE.ADMIN || user?.role === SESSION_ROLE.PROCUREMENT_OFFICER;
+  const isVendor = user?.role === SESSION_ROLE.VENDOR;
 
   const fetchTenders = () => {
     const url = TENDER_API_END_POINT;
@@ -77,7 +80,7 @@ const TenderList = () => {
       toast.success("Tender published");
       fetchTenders();
     } catch (err) {
-      toast.error(err?.response?.data?.message || "Failed to publish tender");
+      toast.error(getApiErrorMessage(err, "Failed to publish tender"));
     }
   };
 
@@ -91,7 +94,7 @@ const TenderList = () => {
       setDeleteTarget(null);
       fetchTenders();
     } catch (err) {
-      toast.error(err?.response?.data?.message || "Could not delete this tender.");
+      toast.error(getApiErrorMessage(err, "Could not delete this tender."));
     }
   };
 
@@ -170,7 +173,7 @@ const TenderList = () => {
           }
           actions={
             isOfficerOrAdmin ? (
-              <div className="flex items-center gap-2">
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
                 <select
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
@@ -182,7 +185,7 @@ const TenderList = () => {
                   <option value="CLOSED">Closed</option>
                   <option value="AWARDED">Awarded</option>
                 </select>
-                {user?.role === "staff" && selectedTenderIds.length > 0 && (
+                {user?.role === SESSION_ROLE.PROCUREMENT_OFFICER && selectedTenderIds.length > 0 && (
                   <Button
                     size="sm"
                     variant="destructive"
@@ -227,19 +230,42 @@ const TenderList = () => {
             ))}
           </div>
         ) : tenders.length === 0 ? (
-          <div className="rounded-2xl border border-slate-200/80 bg-white px-8 py-14 text-center shadow-[0_1px_3px_rgba(15,23,42,0.06)] ring-1 ring-slate-900/[0.04]">
-            <p className="text-sm font-medium text-slate-700">No tenders found</p>
-            <p className="mt-1 text-sm text-slate-500">
-              {isVendor
-                ? vendorScope === "previous"
-                  ? "You have no closed or awarded tenders yet. Completed calls you took part in will appear here."
-                  : "There are no open published tenders right now. Check back later."
-                : "Try another status filter or check back later."}
-            </p>
+          <div className="rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06)] ring-1 ring-slate-900/[0.04]">
+            {isOfficerOrAdmin ? (
+              <EmptyState
+                icon={Gavel}
+                title="No tenders yet"
+                description="Create a tender to publish requirements and collect quotations from approved vendors. Adjust the status filter above if you expected to see drafts."
+                action={{ label: "Create tender", to: "/tenders/create" }}
+                secondaryAction={{ label: "Go to dashboard", to: "/" }}
+              />
+            ) : isVendor ? (
+              vendorScope === "previous" ? (
+                <EmptyState
+                  icon={Inbox}
+                  title="No past tenders"
+                  description="Closed or awarded tenders you participated in will show up here."
+                  secondaryAction={{ label: "Browse active tenders", to: "/tenders" }}
+                />
+              ) : (
+                <EmptyState
+                  icon={Inbox}
+                  title="No open tenders right now"
+                  description="When procurement publishes a new call for bids, it will appear here."
+                  action={{ label: "Go to dashboard", to: "/" }}
+                />
+              )
+            ) : (
+              <EmptyState
+                title="No tenders found"
+                description="Try another status filter or check back later."
+                secondaryAction={{ label: "Dashboard", to: "/" }}
+              />
+            )}
           </div>
         ) : (
           <div className="space-y-4">
-            {user?.role === "staff" && (
+            {user?.role === SESSION_ROLE.PROCUREMENT_OFFICER && (
               <div className="flex items-center rounded-xl border border-slate-200/90 bg-gradient-to-b from-white to-slate-50/80 px-4 py-3 shadow-sm ring-1 ring-slate-900/[0.03]">
                 <label className="inline-flex cursor-pointer items-center gap-3 text-sm font-medium text-slate-700">
                   <input
@@ -271,7 +297,7 @@ const TenderList = () => {
                   className="flex flex-col gap-5 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] ring-1 ring-slate-900/[0.04] sm:flex-row sm:items-stretch sm:justify-between sm:gap-6"
                 >
                   <div className="flex min-w-0 flex-1 items-start gap-3">
-                    {user?.role === "staff" && (
+                    {user?.role === SESSION_ROLE.PROCUREMENT_OFFICER && (
                       <input
                         type="checkbox"
                         className="mt-1.5 h-4 w-4 shrink-0 rounded border-slate-300 text-[#0b1f4d] shadow-sm focus:ring-2 focus:ring-[#0b1f4d]/20"
@@ -370,7 +396,7 @@ const TenderList = () => {
                             Publish tender
                           </Button>
                         )}
-                        {user?.role === "staff" && (
+                        {user?.role === SESSION_ROLE.PROCUREMENT_OFFICER && (
                           <Button
                             size="sm"
                             variant="destructive"

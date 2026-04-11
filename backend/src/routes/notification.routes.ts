@@ -43,7 +43,7 @@ router.patch('/:id/read', authenticate, async (req: AuthRequest, res) => {
   try {
     const n = await Notification.findOneAndUpdate(
       { _id: req.params.id, user: req.user!._id },
-      { read: true },
+      { read: true, readAt: new Date() },
       { new: true }
     );
     if (!n) {
@@ -59,7 +59,11 @@ router.patch('/:id/read', authenticate, async (req: AuthRequest, res) => {
 
 router.patch('/read-all', authenticate, async (req: AuthRequest, res) => {
   try {
-    await Notification.updateMany({ user: req.user!._id, read: false }, { read: true });
+    const now = new Date();
+    await Notification.updateMany(
+      { user: req.user!._id, read: false },
+      { read: true, readAt: now },
+    );
     bustNotificationListCacheForUser(String(req.user!._id));
     return res.json({ success: true });
   } catch (err) {
@@ -68,6 +72,10 @@ router.patch('/read-all', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
+/**
+ * Hard delete exists for rare ops/maintenance; the app UI treats notifications as an
+ * append-only log where “read” is the only state change users make.
+ */
 router.delete('/:id', authenticate, async (req: AuthRequest, res) => {
   try {
     const n = await Notification.findOneAndDelete({

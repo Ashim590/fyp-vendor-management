@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import axios from "axios";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useSelector } from "react-redux";
 import { BID_API_END_POINT } from "@/utils/constant";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -20,6 +21,8 @@ import {
   WORKSPACE_DATA_TABLE_CLASS,
 } from "../layout/WorkspacePageLayout";
 import { cn } from "@/lib/utils";
+import { LoadingState } from "../ui/loading-state";
+import { getApiErrorMessage } from "@/utils/apiError";
 import { ExternalLink, Trash2 } from "lucide-react";
 
 const bidStatusVariant = {
@@ -28,7 +31,39 @@ const bidStatusVariant = {
   REJECTED: "statusDanger",
 };
 
+const BIDS_MONITOR_SEEN_KEY = "vn_bids_monitor_seen_bid_ids";
+
+function loadSeenBidIds(storageKey) {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(
+      Array.isArray(arr) ? arr.map((id) => String(id)) : [],
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function persistSeenBidIds(storageKey, set) {
+  try {
+    localStorage.setItem(storageKey, JSON.stringify([...set]));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+const HIGHLIGHT_FADE_MS = 520;
+
 const AdminBidsMonitor = () => {
+  const navigate = useNavigate();
+  const fadeTimerRef = useRef(null);
+  const { user } = useSelector((s) => s.auth);
+  const seenStorageKey = useMemo(() => {
+    const uid = user?._id || user?.id;
+    return `${BIDS_MONITOR_SEEN_KEY}:${uid ? String(uid) : "session"}`;
+  }, [user?._id, user?.id]);
   const formatCurrency = (amount) =>
     new Intl.NumberFormat("en-NP", {
       style: "currency",
@@ -39,6 +74,75 @@ const AdminBidsMonitor = () => {
   const [bids, setBids] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [seenBidIds, setSeenBidIds] = useState(() => new Set());
+  const [fadingOutBidId, setFadingOutBidId] = useState(null);
+
+  useEffect(() => {
+    setSeenBidIds(loadSeenBidIds(seenStorageKey));
+  }, [seenStorageKey]);
+
+  useEffect(
+    () => () => {
+      if (fadeTimerRef.current) window.clearTimeout(fadeTimerRef.current);
+    },
+    [],
+  );
+
+  const markBidOpened = useCallback(
+    (bidId) => {
+      const id = String(bidId);
+      setSeenBidIds((prev) => {
+        if (prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.add(id);
+        persistSeenBidIds(seenStorageKey, next);
+        return next;
+      });
+    },
+    [seenStorageKey],
+  );
+
+  const openTenderWithOptionalFade = useCallback(
+    (e, bidId, tenderPath) => {
+      if (
+        e.defaultPrevented ||
+        e.button !== 0 ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.shiftKey ||
+        e.altKey
+      ) {
+        return;
+      }
+      const id = String(bidId);
+      const isUnreadNew =
+        bids.some(
+          (x) =>
+            String(x._id) === id &&
+            x.status === "SUBMITTED" &&
+            !seenBidIds.has(id),
+        );
+
+      if (!isUnreadNew) {
+        return;
+      }
+
+      e.preventDefault();
+      if (fadeTimerRef.current) window.clearTimeout(fadeTimerRef.current);
+      setFadingOutBidId(id);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          fadeTimerRef.current = window.setTimeout(() => {
+            fadeTimerRef.current = null;
+            markBidOpened(bidId);
+            setFadingOutBidId(null);
+            navigate(tenderPath);
+          }, HIGHLIGHT_FADE_MS);
+        });
+      });
+    },
+    [bids, seenBidIds, markBidOpened, navigate],
+  );
 
   const load = useCallback(async () => {
     try {
@@ -51,7 +155,7 @@ const AdminBidsMonitor = () => {
       });
       setBids(res.data?.bids || []);
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to load bids monitor");
+      setError(getApiErrorMessage(err, "Failed to load bids monitor"));
       setBids([]);
     } finally {
       setLoading(false);
@@ -80,7 +184,7 @@ const AdminBidsMonitor = () => {
         load();
       })
       .catch((err) =>
-        toast.error(err.response?.data?.message || "Failed to delete bid"),
+        toast.error(getApiErrorMessage(err, "Failed to delete bid")),
       );
   };
 
@@ -118,8 +222,8 @@ const AdminBidsMonitor = () => {
         <TableBody>
           {loading ? (
             <TableRow>
-              <TableCell colSpan={6} className="py-10 text-center text-slate-500">
-                Loading bids…
+              <TableCell colSpan={6} className="p-0">
+                <LoadingState variant="table" label="Loading bids…" />
               </TableCell>
             </TableRow>
           ) : bids.length === 0 ? (
@@ -129,14 +233,63 @@ const AdminBidsMonitor = () => {
               </TableCell>
             </TableRow>
           ) : (
-            bids.map((b) => (
-              <TableRow key={b._id}>
+            bids.map((b) => {
+              const bidKey = String(b._id);
+              const isNewUnreadQuotation =
+                b.status === "SUBMITTED" && !seenBidIds.has(bidKey);
+              const isFadingThisRow = fadingOutBidId === bidKey;
+              const showNewHighlight =
+                isNewUnreadQuotation && !isFadingThisRow;
+              return (
+              <TableRow
+                key={b._id}
+                className={cn(
+                  "transition-[background-color,box-shadow] duration-500 ease-in-out",
+                  showNewHighlight &&
+                    "bg-sky-50/95 ring-1 ring-inset ring-sky-200/90",
+                )}
+              >
                 <TableCell className="min-w-0">
-                  <div className="line-clamp-2 font-medium break-words text-slate-900">
-                    {b.tender?.title || "—"}
-                  </div>
-                  <div className="truncate font-mono text-xs text-slate-500">
-                    {b.tender?.referenceNumber}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {b.tender?._id ? (
+                      <Link
+                        to={`/tenders/${b.tender._id}`}
+                        onClick={(e) =>
+                          openTenderWithOptionalFade(
+                            e,
+                            b._id,
+                            `/tenders/${b.tender._id}`,
+                          )
+                        }
+                        className="min-w-0 flex-1 rounded-lg text-left outline-none hover:text-sky-900 focus-visible:ring-2 focus-visible:ring-sky-400"
+                      >
+                        <div className="line-clamp-2 font-medium break-words text-slate-900">
+                          {b.tender?.title || "—"}
+                        </div>
+                        <div className="truncate font-mono text-xs text-slate-500">
+                          {b.tender?.referenceNumber}
+                        </div>
+                      </Link>
+                    ) : (
+                      <div className="min-w-0 flex-1">
+                        <div className="line-clamp-2 font-medium break-words text-slate-900">
+                          {b.tender?.title || "—"}
+                        </div>
+                        <div className="truncate font-mono text-xs text-slate-500">
+                          {b.tender?.referenceNumber}
+                        </div>
+                      </div>
+                    )}
+                    {isNewUnreadQuotation ? (
+                      <span
+                        className={cn(
+                          "shrink-0 rounded-full bg-sky-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white transition-opacity duration-500 ease-out",
+                          isFadingThisRow && "pointer-events-none opacity-0",
+                        )}
+                      >
+                        New
+                      </span>
+                    ) : null}
                   </div>
                 </TableCell>
                 <TableCell className="min-w-0 text-slate-700">
@@ -167,7 +320,17 @@ const AdminBidsMonitor = () => {
                         className="h-8 w-8 shrink-0 border-slate-200"
                         asChild
                       >
-                        <Link to={`/tenders/${b.tender._id}`} title="Open tender">
+                        <Link
+                          to={`/tenders/${b.tender._id}`}
+                          title="Open tender"
+                          onClick={(e) =>
+                            openTenderWithOptionalFade(
+                              e,
+                              b._id,
+                              `/tenders/${b.tender._id}`,
+                            )
+                          }
+                        >
                           <ExternalLink className="h-4 w-4" />
                           <span className="sr-only">Tender</span>
                         </Link>
@@ -186,7 +349,8 @@ const AdminBidsMonitor = () => {
                   </div>
                 </TableCell>
               </TableRow>
-            ))
+              );
+            })
           )}
         </TableBody>
       </Table>

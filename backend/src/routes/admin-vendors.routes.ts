@@ -94,6 +94,8 @@ router.patch("/:id/verify", async (req: AuthRequest, res) => {
         }.`,
         link: "/vendor-profile",
         type: isVerified ? "vendor_approved" : "vendor_rejected",
+        referenceId: vendor._id,
+        roleTarget: "VENDOR",
       });
     }
 
@@ -103,6 +105,7 @@ router.patch("/:id/verify", async (req: AuthRequest, res) => {
         title: "Vendor approved",
         body: `“${vendor.name}” was verified on the admin panel.${actor ? ` Action: ${actor}.` : ""}`,
         type: "vendor_approved_staff",
+        referenceId: vendor._id,
         excludeUserId: req.user?._id ?? null,
       });
     } else {
@@ -110,6 +113,7 @@ router.patch("/:id/verify", async (req: AuthRequest, res) => {
         title: "Vendor needs review again",
         body: `“${vendor.name}” was set back to pending.${actor ? ` Action: ${actor}.` : ""}`,
         type: "vendor_pending_review",
+        referenceId: vendor._id,
         excludeUserId: req.user?._id ?? null,
       });
     }

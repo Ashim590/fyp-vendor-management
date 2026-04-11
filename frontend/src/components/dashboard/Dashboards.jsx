@@ -6,6 +6,9 @@ import axios from "axios";
 import { DASHBOARD_API_END_POINT } from "@/utils/constant";
 import { getAuthHeaderFromStorage } from "@/utils/authHeader";
 import { useNotificationSummary } from "@/context/NotificationSummaryContext";
+import { SESSION_ROLE } from "@/constants/userRoles";
+import { LoadingState } from "@/components/ui/loading-state";
+import { getApiErrorMessage } from "@/utils/apiError";
 import {
   Package,
   FileText,
@@ -298,7 +301,7 @@ export const StaffDashboard = () => {
         headers,
         params: { refresh: "1" },
       });
-      if (data?.success && data.kind === "staff") {
+      if (data?.success && data.kind === SESSION_ROLE.PROCUREMENT_OFFICER) {
         applyStaffDashboard(data);
       }
     } catch {
@@ -315,7 +318,7 @@ export const StaffDashboard = () => {
 
   React.useEffect(() => {
     const d = staffWorkspace?.dashboard;
-    if (d?.success && d.kind === "staff") {
+    if (d?.success && d.kind === SESSION_ROLE.PROCUREMENT_OFFICER) {
       applyStaffDashboard(d);
       setError("");
       setLoading(false);
@@ -336,16 +339,17 @@ export const StaffDashboard = () => {
           headers,
         });
         if (cancelled) return;
-        if (!data?.success || data.kind !== "staff") {
+        if (!data?.success || data.kind !== SESSION_ROLE.PROCUREMENT_OFFICER) {
           throw new Error(data?.message || "Unexpected dashboard response");
         }
         applyStaffDashboard(data);
       } catch (e) {
         if (!cancelled) {
           setError(
-            e?.response?.data?.message ||
-              e?.message ||
+            getApiErrorMessage(
+              e,
               "Could not load dashboard data. Please refresh.",
+            ),
           );
         }
       } finally {
@@ -689,7 +693,9 @@ export const StaffDashboard = () => {
                   Top vendors
                 </p>
                 {loading ? (
-                  <p className="mt-2 text-sm text-slate-500">…</p>
+                  <span className="mt-2 block">
+                    <LoadingState variant="inline" labelHidden />
+                  </span>
                 ) : topVendors.length === 0 ? (
                   <p className="mt-2 text-sm text-slate-600">—</p>
                 ) : (
@@ -960,7 +966,7 @@ export const VendorDashboard = () => {
               </div>
               <div className="space-y-2.5">
                 {loading ? (
-                  <p className="text-sm text-slate-500">Loading…</p>
+                  <LoadingState variant="inline" />
                 ) : recentBids.length === 0 ? (
                   <p className="text-sm text-slate-500">
                     No bids submitted yet.
@@ -1022,11 +1028,11 @@ export const VendorDashboard = () => {
 const DashboardSelector = () => {
   const { user } = useSelector((store) => store.auth);
   switch (user?.role) {
-    case "admin":
+    case SESSION_ROLE.ADMIN:
       return <AdminDashboard />;
-    case "staff":
+    case SESSION_ROLE.PROCUREMENT_OFFICER:
       return <StaffDashboard />;
-    case "vendor":
+    case SESSION_ROLE.VENDOR:
       return <VendorDashboard />;
     default:
       return <AdminDashboard />;

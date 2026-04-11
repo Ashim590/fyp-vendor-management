@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
+import { getApiErrorMessage } from "@/utils/apiError";
 import { VENDOR_API_END_POINT } from "@/utils/constant";
 
 export const getAllVendors = createAsyncThunk(
@@ -13,7 +14,7 @@ export const getAllVendors = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error fetching vendors"
+        getApiErrorMessage(error, "Error fetching vendors")
       );
     }
   }
@@ -29,7 +30,7 @@ export const getVendorById = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error fetching vendor"
+        getApiErrorMessage(error, "Error fetching vendor")
       );
     }
   }
@@ -50,7 +51,7 @@ export const updateVendor = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error updating vendor"
+        getApiErrorMessage(error, "Error updating vendor")
       );
     }
   }
@@ -70,7 +71,7 @@ export const approveVendor = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error approving vendor"
+        getApiErrorMessage(error, "Error approving vendor")
       );
     }
   }
@@ -90,7 +91,7 @@ export const rejectVendor = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error rejecting vendor"
+        getApiErrorMessage(error, "Error rejecting vendor")
       );
     }
   }
@@ -106,7 +107,7 @@ export const getVendorStats = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error fetching vendor stats"
+        getApiErrorMessage(error, "Error fetching vendor stats")
       );
     }
   }

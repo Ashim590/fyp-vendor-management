@@ -10,6 +10,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useSelector } from 'react-redux'
 import useGetCompanyById from '@/hooks/useGetCompanyById'
+import { getApiErrorMessage } from '@/utils/apiError'
 
 const CompanySetup = () => {
     const params = useParams();
@@ -57,7 +58,7 @@ const CompanySetup = () => {
                 navigate("/admin/companies");
             }
         } catch (error) {
-            toast.error(error?.response?.data?.message || "Could not save company.");
+            toast.error(getApiErrorMessage(error, "Could not save company."));
         } finally {
             setLoading(false);
         }

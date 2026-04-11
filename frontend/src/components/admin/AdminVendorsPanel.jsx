@@ -1,7 +1,8 @@
 import React from "react";
 import axios from "axios";
 import { ADMIN_VENDORS_API_END_POINT } from "@/utils/constant";
-import { LoadingSkeleton } from "../shared/LoadingSkeleton";
+import { LoadingState } from "../ui/loading-state";
+import { getApiErrorMessage } from "@/utils/apiError";
 import { toast } from "sonner";
 import { getAuthHeaderFromStorage } from "@/utils/authHeader";
 
@@ -51,7 +52,7 @@ const AdminVendorsPanel = () => {
     } catch (error) {
       console.error("Failed to update vendor status", error);
       toast.error(
-        error.response?.data?.message || "Could not update vendor status."
+        getApiErrorMessage(error, "Could not update vendor status."),
       );
     }
   };
@@ -85,11 +86,8 @@ const AdminVendorsPanel = () => {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-3 py-4 text-center text-slate-500">
-                  <div className="flex flex-col gap-2 items-center">
-                    <LoadingSkeleton className="h-3 w-40" />
-                    <LoadingSkeleton className="h-3 w-28" />
-                  </div>
+                <td colSpan={5} className="p-0">
+                  <LoadingState variant="table" />
                 </td>
               </tr>
             ) : vendors.length === 0 ? (

@@ -4,6 +4,8 @@ import { useSelector } from "react-redux";
 import { Link } from "react-router-dom";
 import { AUTH_API_END_POINT } from "@/utils/constant";
 import { Button } from "../ui/button";
+import { LoadingState } from "../ui/loading-state";
+import { getApiErrorMessage } from "@/utils/apiError";
 import { toast } from "sonner";
 
 const USERS_PAGE_LIMIT = 25;
@@ -103,7 +105,7 @@ const AdminUsers = () => {
     } catch (err) {
       console.error("Failed to create officer", err);
       toast.error(
-        err?.response?.data?.message || "Failed to create procurement officer.",
+        getApiErrorMessage(err, "Failed to create procurement officer."),
       );
     } finally {
       setSaving(false);
@@ -144,7 +146,7 @@ const AdminUsers = () => {
     } catch (err) {
       setUsers(prevUsers);
       console.error("Failed to toggle user", err);
-      toast.error(err?.response?.data?.message || "Failed to update user status.");
+      toast.error(getApiErrorMessage(err, "Failed to update user status."));
     } finally {
       setTogglingId(null);
     }
@@ -215,7 +217,7 @@ const AdminUsers = () => {
           All users
         </h2>
         {loading ? (
-          <p className="text-xs text-slate-500">Loading users...</p>
+          <LoadingState variant="inline" label="Loading users…" />
         ) : users.length === 0 ? (
           <p className="text-xs text-slate-500">
             No users found. Use the form above to create your first officer.

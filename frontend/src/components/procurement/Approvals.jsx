@@ -19,6 +19,8 @@ import {
   TableRow,
 } from "../ui/table";
 import { toast } from "sonner";
+import { LoadingState } from "../ui/loading-state";
+import { SESSION_ROLE } from "@/constants/userRoles";
 import { Search, CheckCircle, XCircle, Eye, Clock } from "lucide-react";
 import {
   WorkspacePageLayout,
@@ -29,6 +31,7 @@ import {
   WORKSPACE_DATA_TABLE_CLASS,
 } from "../layout/WorkspacePageLayout";
 import { cn } from "@/lib/utils";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 const Approvals = () => {
   const dispatch = useDispatch();
@@ -38,7 +41,7 @@ const Approvals = () => {
   );
   const { user } = useSelector((store) => store.auth);
   const canDecide =
-    user?.role === "admin" || user?.role === "staff";
+    user?.role === SESSION_ROLE.ADMIN || user?.role === SESSION_ROLE.PROCUREMENT_OFFICER;
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showPending, setShowPending] = useState(false);
@@ -53,7 +56,7 @@ const Approvals = () => {
 
   useEffect(() => {
     if (error) {
-      toast.error(error);
+      toast.error(getApiErrorMessage(error, "Could not load approvals."));
     }
   }, [error]);
 
@@ -67,7 +70,7 @@ const Approvals = () => {
         dispatch(getAllApprovals({ limit: 50 }));
       }
     } catch (err) {
-      toast.error(err || "Failed to approve");
+      toast.error(getApiErrorMessage(err, "Failed to approve"));
     }
   };
 
@@ -85,7 +88,7 @@ const Approvals = () => {
           dispatch(getAllApprovals({ limit: 50 }));
         }
       } catch (err) {
-        toast.error(err || "Failed to reject");
+        toast.error(getApiErrorMessage(err, "Failed to reject"));
       }
     }
   };
@@ -204,23 +207,32 @@ const Approvals = () => {
         </select>
       </WorkspaceToolbar>
 
-      <Table className={cn(WORKSPACE_DATA_TABLE_CLASS, "table-fixed")}>
+      <Table className={cn(WORKSPACE_DATA_TABLE_CLASS, "md:!table-auto")}>
         <colgroup>
-          <col className="w-[2%]" />
-          <col className="w-[19%]" />
-          <col className="w-[7%]" />
-          <col className="w-[11%]" />
-          <col className="w-[9%]" />
-          <col className="w-[10%]" />
-          <col className="w-[8%]" />
-          <col className="w-[8%]" />
-          <col className="w-[8%]" />
-          <col className="w-[18%]" />
+          <col className="min-w-[260px]" />
+          <col className="min-w-[120px]" />
+          <col className="min-w-[120px]" />
+          <col className="min-w-[110px]" />
+          <col className="min-w-[120px]" />
+          <col className="min-w-[96px]" />
+          <col className="min-w-[100px]" />
+          <col className="min-w-[110px]" />
+          <col className="min-w-[88px]" />
         </colgroup>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="text-center">S/N</TableHead>
-            <TableHead className="text-left">Title</TableHead>
+            <TableHead className="min-w-[260px] text-left">
+              {/* Mirror row layout so the label sits centered over the title text, not the S/N box */}
+              <div className="flex items-center gap-3 sm:gap-4">
+                <span
+                  className="invisible flex h-8 min-w-[2rem] shrink-0 items-center justify-center rounded-lg bg-slate-100 px-1.5 text-xs font-semibold tabular-nums ring-1 ring-slate-200/80"
+                  aria-hidden
+                >
+                  0
+                </span>
+                <span className="min-w-0 flex-1 text-center">Request</span>
+              </div>
+            </TableHead>
             <TableHead className="text-left">Type</TableHead>
             <TableHead className="text-left">Requester</TableHead>
             <TableHead className="text-left">Department</TableHead>
@@ -234,13 +246,13 @@ const Approvals = () => {
         <TableBody>
           {loading ? (
             <TableRow>
-              <TableCell colSpan={10} className="py-12 text-center text-slate-500">
-                Loading…
+              <TableCell colSpan={9} className="p-0">
+                <LoadingState variant="table" />
               </TableCell>
             </TableRow>
           ) : filteredApprovals.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={10} className="py-12 text-center text-slate-500">
+              <TableCell colSpan={9} className="py-12 text-center text-slate-500">
                 {showPending
                   ? "Nothing assigned to you as current approver."
                   : "No approvals match your filters."}
@@ -249,31 +261,42 @@ const Approvals = () => {
           ) : (
             filteredApprovals.map((approval, index) => (
               <TableRow key={approval._id}>
-                <TableCell className="min-w-0 text-center text-xs text-slate-500">
-                  {index + 1}
+                <TableCell className="min-w-0 align-middle">
+                  <div className="flex items-center gap-3 sm:gap-4">
+                    <span
+                      className="flex h-8 min-w-[2rem] shrink-0 items-center justify-center rounded-lg bg-slate-100 px-1.5 text-xs font-semibold tabular-nums text-slate-600 ring-1 ring-slate-200/80"
+                      title={`Row ${index + 1}`}
+                    >
+                      {index + 1}
+                    </span>
+                    <span className="min-w-0 flex-1 text-sm font-medium leading-snug text-slate-900 sm:text-[13px]">
+                      <span className="line-clamp-3 break-words">
+                        {approval.title}
+                      </span>
+                    </span>
+                  </div>
                 </TableCell>
-                <TableCell className="min-w-0 font-medium text-slate-900">
-                  <span className="line-clamp-2 break-words">{approval.title}</span>
+                <TableCell className="min-w-0 align-middle capitalize text-slate-600">
+                  <span className="whitespace-nowrap">
+                    {String(approval.entityType || "").replace(/_/g, " ") || "—"}
+                  </span>
                 </TableCell>
-                <TableCell className="min-w-0 whitespace-nowrap capitalize text-slate-600">
-                  {approval.entityType?.replace("_", " ")}
-                </TableCell>
-                <TableCell className="min-w-0 text-slate-700">
+                <TableCell className="min-w-0 align-middle text-slate-700">
                   <span className="line-clamp-2 break-words">{approval.requesterName}</span>
                 </TableCell>
-                <TableCell className="min-w-0 text-slate-600">
+                <TableCell className="min-w-0 align-middle text-slate-600">
                   <span className="line-clamp-2 break-words">{approval.requesterDepartment || "—"}</span>
                 </TableCell>
-                <TableCell className="min-w-0 whitespace-nowrap font-medium tabular-nums text-slate-900">
+                <TableCell className="min-w-0 align-middle whitespace-nowrap font-medium tabular-nums text-slate-900">
                   {formatCurrency(approval.amount)}
                 </TableCell>
-                <TableCell className="min-w-0">{getPriorityBadge(approval.priority)}</TableCell>
-                <TableCell className="min-w-0">{getStatusBadge(approval.status)}</TableCell>
-                <TableCell className="min-w-0 whitespace-nowrap text-slate-600">
+                <TableCell className="min-w-0 align-middle">{getPriorityBadge(approval.priority)}</TableCell>
+                <TableCell className="min-w-0 align-middle">{getStatusBadge(approval.status)}</TableCell>
+                <TableCell className="min-w-0 align-middle whitespace-nowrap text-slate-600">
                   {formatDate(approval.createdAt)}
                 </TableCell>
-                <TableCell className="min-w-0 text-right">
-                  <div className="flex flex-wrap justify-end gap-1.5">
+                <TableCell className="min-w-0 align-middle text-right">
+                  <div className="flex flex-col items-end justify-center gap-1.5">
                     <Button
                       variant="outline"
                       size="sm"

@@ -9,7 +9,9 @@ export async function notifyAllAdmins(params: {
   body: string;
   link?: string;
   type: NotificationType;
-  /** Omit notifications to this user (e.g. the admin who performed the action). */
+  /** Links the row back to a domain object when the alert is about a specific record. */
+  referenceId?: Types.ObjectId | string | null;
+  /** Stops the acting admin from getting pinged about their own action. */
   excludeUserId?: Types.ObjectId | string | null;
 }): Promise<void> {
   try {
@@ -27,6 +29,10 @@ export async function notifyAllAdmins(params: {
     if (!targets.length) return;
 
     const link = params.link ?? DEFAULT_ADMIN_LINK;
+    const ref =
+      params.referenceId != null && params.referenceId !== ""
+        ? params.referenceId
+        : undefined;
     await Notification.insertMany(
       targets.map((a) => ({
         user: a._id,
@@ -35,6 +41,8 @@ export async function notifyAllAdmins(params: {
         link,
         read: false,
         type: params.type,
+        roleTarget: "ADMIN" as const,
+        ...(ref ? { referenceId: ref } : {}),
       })),
     );
   } catch (e) {

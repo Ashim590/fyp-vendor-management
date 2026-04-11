@@ -222,7 +222,20 @@ export async function checkEsewaTransactionStatus(args: {
     return res.data as Record<string, unknown>;
   } catch (e) {
     if (axios.isAxiosError(e)) {
-      console.error('[eSewa status] error', e.message, e.response?.status, e.response?.data);
+      if (process.env.NODE_ENV === 'production') {
+        console.error(
+          '[eSewa status] error',
+          e.message,
+          e.response?.status,
+        );
+      } else {
+        console.error(
+          '[eSewa status] error',
+          e.message,
+          e.response?.status,
+          e.response?.data,
+        );
+      }
     }
     throw e;
   }

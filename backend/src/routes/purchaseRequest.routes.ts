@@ -8,6 +8,7 @@ import PurchaseRequest, {
 import Approval from "../models/Approval";
 import User, { IUser } from "../models/User";
 import Notification from "../models/Notification";
+import { roleTargetFromUserRole } from "../utils/notificationRoleTarget";
 import {
   mergeWithCursorFilter,
   parseListLimit,
@@ -67,7 +68,7 @@ async function notifyPrSubmitted(pr: any, actorUserId: any): Promise<void> {
   const recipients = await User.find({
     _id: { $ne: actorUserId },
     $or: [{ role: "ADMIN" }, { role: "PROCUREMENT_OFFICER" }],
-  }).select("_id");
+  }).select("_id role");
   if (!recipients.length) return;
   await Notification.insertMany(
     recipients.map((u) => ({
@@ -76,6 +77,8 @@ async function notifyPrSubmitted(pr: any, actorUserId: any): Promise<void> {
       body: `${pr.requestNumber}: ${pr.title} is waiting for admin approval.`,
       link: "/approvals",
       type: "purchase_request_submitted",
+      referenceId: pr._id,
+      roleTarget: roleTargetFromUserRole(u.role),
     })),
   );
 }

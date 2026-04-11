@@ -1,20 +1,7 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
+import { getApiErrorMessage } from "@/utils/apiError";
 import { INVOICE_API_END_POINT } from "@/utils/constant";
-
-function axiosErrorMessage(error, fallback) {
-  const apiMsg = error?.response?.data?.message;
-  if (apiMsg) return typeof apiMsg === "string" ? apiMsg : fallback;
-  const code = error?.code;
-  if (code === "ECONNREFUSED" || code === "ERR_NETWORK") {
-    return "Cannot reach the server. Try again later.";
-  }
-  if (error?.message === "Network Error") {
-    return "Network error. Check your connection.";
-  }
-  if (typeof error?.message === "string" && error.message) return error.message;
-  return fallback;
-}
 
 export const createInvoice = createAsyncThunk(
   "invoice/create",
@@ -29,7 +16,9 @@ export const createInvoice = createAsyncThunk(
       );
       return response.data;
     } catch (error) {
-      return rejectWithValue(axiosErrorMessage(error, "Error creating invoice"));
+      return rejectWithValue(
+        getApiErrorMessage(error, "Error creating invoice"),
+      );
     }
   }
 );
@@ -45,7 +34,7 @@ export const getAllInvoices = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error fetching invoices"
+        getApiErrorMessage(error, "Error fetching invoices"),
       );
     }
   }
@@ -63,7 +52,9 @@ export const getInvoiceById = createAsyncThunk(
       );
       return response.data;
     } catch (error) {
-      return rejectWithValue(axiosErrorMessage(error, "Error fetching invoice"));
+      return rejectWithValue(
+        getApiErrorMessage(error, "Error fetching invoice"),
+      );
     }
   }
 );
@@ -81,7 +72,9 @@ export const updateInvoice = createAsyncThunk(
       );
       return response.data;
     } catch (error) {
-      return rejectWithValue(axiosErrorMessage(error, "Error updating invoice"));
+      return rejectWithValue(
+        getApiErrorMessage(error, "Error updating invoice"),
+      );
     }
   }
 );

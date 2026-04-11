@@ -168,6 +168,15 @@ function logDeployConfigHints() {
   }
   if (
     isProduction &&
+    backendUrl &&
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(backendUrl.trim())
+  ) {
+    console.warn(
+      '[deploy] BACKEND_URL still looks like localhost — eSewa callbacks and webhooks need your public API URL.',
+    );
+  }
+  if (
+    isProduction &&
     String(process.env.ALLOW_BOOTSTRAP_ADMIN || '').toLowerCase() === 'true'
   ) {
     console.warn(
@@ -217,6 +226,8 @@ app.use('/api/v1/quotation', quotationRoutes);
 app.use('/api/v1/approval', approvalRoutes);
 app.use('/api/v1/purchase-order', purchaseOrderRoutes);
 app.use('/api/v1/delivery', deliveryRoutes);
+/** Alias kept for client compatibility: POST /api/orders/:id/confirm-delivery */
+app.use('/api/orders', deliveryRoutes);
 app.use('/api/v1/invoice', invoiceRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/reports', reportRoutes);
@@ -314,7 +325,7 @@ if (process.env.MONGO_DISABLE_COMPRESSION !== '1') {
 let httpServer: Server | null = null;
 
 function shutdown(signal: string): void {
-  console.log(`${signal} received, shutting down gracefully`);
+  console.info(`${signal} received, shutting down gracefully`);
   if (!httpServer) {
     void mongoose.disconnect().finally(() => process.exit(0));
     return;
@@ -324,7 +335,7 @@ function shutdown(signal: string): void {
     mongoose
       .disconnect()
       .then(() => {
-        console.log('MongoDB disconnected');
+        console.info('MongoDB disconnected');
         process.exit(0);
       })
       .catch((e) => {
@@ -351,7 +362,9 @@ mongoose.connection.on('error', (err) => {
 mongoose
   .connect(MONGO_URI, mongoOptions)
   .then(async () => {
-    console.log('Connected to MongoDB');
+    if (!isProduction) {
+      console.log('Connected to MongoDB');
+    }
     try {
       const db = mongoose.connection.getClient().db();
       await db.admin().command({ ping: 1 });
@@ -362,8 +375,14 @@ mongoose
       );
     }
     httpServer = app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-      console.log(`Allowed CORS origins: ${clientOrigins.join(', ')}`);
+      if (isProduction) {
+        console.info(
+          `Paropakar VendorNet API · listening on :${PORT} · CORS ${clientOrigins.length} origin(s)`,
+        );
+      } else {
+        console.log(`Server running on port ${PORT}`);
+        console.log(`Allowed CORS origins: ${clientOrigins.join(', ')}`);
+      }
     });
   })
   .catch((err) => {

@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Leaflet uses z-index 400–1000 on tile/marker/control panes. Without a bounded
+   stacking context, those layers can paint above fixed UI (e.g. navbar z-50). */
+.leaflet-container {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+}
+
 :root {
   --color-primary: #14b8a6;
   --color-primary-hover: #0f9f90;
@@ -14,8 +22,12 @@
 }
 
 @layer base {
+  html {
+    overflow-x: clip;
+  }
   body {
     @apply font-sans text-slate-800 antialiased;
+    overflow-x: clip;
     background-color: var(--app-canvas);
     background-image: linear-gradient(
       180deg,
@@ -75,4 +87,24 @@
 
 .animate-slide-fade-up {
   animation: slide-fade-up 700ms ease-out forwards;
+}
+
+/* Vendor signup: visible, thin scrollbar on the form body */
+.signup-form-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(148 163 184 / 0.9) rgb(241 245 249);
+}
+.signup-form-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.signup-form-scroll::-webkit-scrollbar-track {
+  background: rgb(241 245 249);
+  border-radius: 6px;
+}
+.signup-form-scroll::-webkit-scrollbar-thumb {
+  background: rgb(148 163 184);
+  border-radius: 6px;
+}
+.signup-form-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgb(100 116 139);
 }

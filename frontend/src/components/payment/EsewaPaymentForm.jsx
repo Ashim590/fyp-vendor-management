@@ -20,14 +20,29 @@ export function EsewaPaymentForm({ checkoutUrl, payload, onCancel }) {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-sky-100 bg-white p-6 shadow-xl">
-        <h2 className="text-lg font-semibold text-slate-900">
-          Redirecting to eSewa…
-        </h2>
+      <div
+        className="w-full max-w-md rounded-2xl border border-sky-100 bg-white p-6 shadow-xl"
+        role="status"
+        aria-live="polite"
+      >
+        <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:items-center sm:text-left">
+          <div
+            className="h-10 w-10 shrink-0 animate-spin rounded-full border-2 border-slate-200 border-t-teal-600"
+            aria-hidden
+          />
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-slate-900">
+              Opening payment gateway…
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Securing your session — this only takes a moment.
+            </p>
+          </div>
+        </div>
         {onCancel && (
           <button
             type="button"
-            className="mt-4 text-sm font-medium text-teal-700 hover:underline"
+            className="mt-5 text-sm font-medium text-teal-700 hover:underline"
             onClick={onCancel}
           >
             Cancel

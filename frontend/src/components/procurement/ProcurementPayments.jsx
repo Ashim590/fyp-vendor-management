@@ -22,12 +22,15 @@ import {
 } from "../ui/table";
 import { EsewaPaymentForm } from "@/components/payment/EsewaPaymentForm";
 import { toast } from "sonner";
-import { Loader2, ExternalLink } from "lucide-react";
+import { SESSION_ROLE } from "@/constants/userRoles";
+import { ExternalLink } from "lucide-react";
+import { LoadingState } from "../ui/loading-state";
 import { cn } from "@/lib/utils";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 export default function ProcurementPayments() {
   const { user } = useSelector((store) => store.auth);
-  const isStaff = user?.role === "staff";
+  const isStaff = user?.role === SESSION_ROLE.PROCUREMENT_OFFICER;
   const [searchParams, setSearchParams] = useSearchParams();
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -127,9 +130,7 @@ export default function ProcurementPayments() {
       setCheckout({ checkoutUrl: data.checkoutUrl, payload: data.payload });
     } catch (e) {
       toast.error(
-        e?.response?.data?.message ||
-          e?.message ||
-          "Could not open eSewa checkout.",
+        getApiErrorMessage(e, "Could not open eSewa checkout."),
       );
     }
   };
@@ -245,8 +246,8 @@ export default function ProcurementPayments() {
         <TableBody>
           {loading ? (
             <TableRow>
-              <TableCell colSpan={9} className="py-12 text-center text-slate-500">
-                <Loader2 className="inline h-5 w-5 animate-spin text-teal-600" />
+              <TableCell colSpan={9} className="p-0">
+                <LoadingState variant="table" />
               </TableCell>
             </TableRow>
           ) : payments.length === 0 ? (

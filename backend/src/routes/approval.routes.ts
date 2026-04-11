@@ -11,6 +11,7 @@ import {
   trimExtraDoc,
 } from '../utils/cursorPagination';
 import { invalidateStaffSummaryCache } from '../utils/staffDashboardCache';
+import { roleTargetFromUserRole } from '../utils/notificationRoleTarget';
 
 const router = express.Router();
 
@@ -233,7 +234,7 @@ router.put(
             { role: 'ADMIN' },
             { role: 'PROCUREMENT_OFFICER' }
           ]
-        }).select('_id');
+        }).select('_id role');
 
         if (notifyUsers.length) {
           const baseNotifs = notifyUsers.map((u) => ({
@@ -241,7 +242,10 @@ router.put(
             title: 'Purchase request approved',
             body: `${pr.requestNumber}: ${pr.title} was approved.`,
             link: '/approvals',
-            type: 'purchase_request_approved' as const
+            type: 'purchase_request_approved' as const,
+            read: false,
+            referenceId: pr._id,
+            roleTarget: roleTargetFromUserRole(u.role),
           }));
           const tenderNotifs = autoTender
             ? notifyUsers.map((u) => ({
@@ -249,7 +253,10 @@ router.put(
                 title: 'Tender created from approved request',
                 body: `${pr.requestNumber}: Tender ${autoTender.referenceNumber} created in Draft.`,
                 link: '/tenders',
-                type: 'tender_auto_created' as const
+                type: 'tender_auto_created' as const,
+                read: false,
+                referenceId: autoTender._id,
+                roleTarget: roleTargetFromUserRole(u.role),
               }))
             : [];
           await Notification.insertMany([...baseNotifs, ...tenderNotifs]);
@@ -289,12 +296,15 @@ router.put(
         pr.status = 'rejected';
         await pr.save();
 
+        const requesterUser = await User.findById(pr.requester).select('role').lean();
         await Notification.create({
           user: pr.requester,
           title: 'Purchase request rejected',
           body: `${pr.requestNumber}: ${pr.title} was rejected.${rejectionReason ? ` Reason: ${rejectionReason}` : ''}`,
           link: '/purchase-requests',
-          type: 'purchase_request_rejected'
+          type: 'purchase_request_rejected',
+          referenceId: pr._id,
+          roleTarget: roleTargetFromUserRole(requesterUser?.role),
         }).catch(() => {});
       }
     }

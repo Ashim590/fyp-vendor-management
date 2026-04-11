@@ -17,7 +17,7 @@ const notifCacheParsed = parseInt(
   process.env.NOTIFICATION_LIST_CACHE_MS || '30000',
   10,
 );
-/** Cap raised so admin/procurement polling hits RAM more often (see NOTIFICATION_LIST_CACHE_MS in .env). */
+/** Upper bound on cache TTL so env misconfigures don’t freeze stale counts forever. */
 const NOTIF_LIST_CACHE_MS = Number.isFinite(notifCacheParsed)
   ? Math.min(120_000, Math.max(0, notifCacheParsed))
   : 30_000;
@@ -27,7 +27,7 @@ const notificationPageCache = new Map<string, NotifCached>();
 /** Coalesce concurrent identical loads (e.g. React StrictMode double mount + /session/staff-home). */
 const notificationPageInflight = new Map<string, Promise<NotificationPageResult>>();
 
-/** Types only marketplace vendors should see (published tender marketplace alerts, etc.). */
+/** Tender “new listing” alerts are vendor-marketplace noise for staff dashboards. */
 const VENDOR_ONLY_NOTIFICATION_TYPES = ['tender_created'] as const;
 
 function vendorOnlyTypeFilter(viewerRole: string | undefined) {
@@ -36,12 +36,12 @@ function vendorOnlyTypeFilter(viewerRole: string | undefined) {
 }
 
 export type LoadNotificationPageOptions = {
-  /** Authenticated user's role; non-vendors never see VENDOR_ONLY_NOTIFICATION_TYPES. */
+  /** Staff accounts filter out vendor-only marketplace types from the shared collection. */
   viewerRole?: string;
 };
 
 /**
- * Shared list + unread count (used by GET /notifications and staff bootstrap).
+ * Single implementation behind GET /notifications and the staff-home bundle so counts stay consistent.
  */
 export async function loadNotificationPageForUser(
   userId: Types.ObjectId,
@@ -73,8 +73,10 @@ export async function loadNotificationPageForUser(
         Notification.find(merged)
           .sort({ createdAt: -1, _id: -1 })
           .limit(pageLimit + 1)
-          .select('_id title body link read type createdAt')
-          .lean(),
+          .select(
+            '_id title body link read type createdAt readAt referenceId roleTarget',
+          )
+          .lean({ virtuals: true }),
         Notification.countDocuments({
           user: userId,
           read: false,
@@ -119,7 +121,7 @@ export async function loadNotificationPageForUser(
   return p;
 }
 
-/** Invalidate cached list/unread count after mark-read (PATCH). */
+/** Read transitions would otherwise show stale badges until the TTL expires. */
 export function bustNotificationListCacheForUser(userId: string): void {
   const prefix = `${userId}:`;
   for (const key of notificationPageCache.keys()) {

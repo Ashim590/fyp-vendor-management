@@ -1,7 +1,7 @@
 /**
- * API base (no trailing slash).
- * - Local dev: leave VITE_API_BASE_URL unset — requests use `/api/...` and Vite proxies (vite.config.js).
- * - Production (Vercel): set VITE_API_BASE_URL to your Render/Railway API origin (e.g. https://api.example.com).
+ * API base (no trailing slash). Empty string means same-origin `/api/...` (Vite dev proxy).
+ * Production builds should set VITE_API_BASE_URL to the public backend so the SPA never
+ * embeds localhost — that value is baked in at `npm run build` time.
  */
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 const api = (path) => `${API_BASE}${path}`;
@@ -11,6 +11,11 @@ export const USER_API_END_POINT = api("/api/v1/user");
 
 // New auth API used by Paropakar VendorNet backend
 export const AUTH_API_END_POINT = api("/api/auth");
+/** Current user (backend `user.routes` — must respect VITE_API_BASE_URL in production) */
+export const USERS_ME_API_END_POINT = api("/api/users/me");
+export const USERS_ME_PASSWORD_API_END_POINT = api("/api/users/me/password");
+/** Vendor self-service profile */
+export const VENDOR_ME_API_END_POINT = api("/api/v1/vendor/me");
 export const JOB_API_END_POINT = api("/api/v1/job");
 export const APPLICATION_API_END_POINT = api("/api/v1/application");
 export const COMPANY_API_END_POINT = api("/api/v1/company");
@@ -36,17 +41,27 @@ export const DASHBOARD_API_END_POINT = api("/api/v1/dashboard");
 export const PAYMENT_API_END_POINT = api("/api/v1/payment");
 /** Invoice payments — eSewa */
 export const INVOICE_PAYMENT_API_END_POINT = api("/api/v1/invoice-payment");
-/** Combined staff (procurement) dashboard + notifications — one round-trip */
+/** One request bundles procurement dashboard + notifications to cut latency on staff home. */
 export const SESSION_API_END_POINT = api("/api/v1/session");
 
-// User roles for VendorNet
+// Re-exports live in userRoles.js so role naming stays in one place.
+export {
+  BACKEND_ROLES,
+  SESSION_ROLE,
+  ROLE_LABELS,
+  mapApiRoleToSession,
+  normalizeSessionRole,
+  getRoleLabel,
+} from "@/constants/userRoles";
+
+/** Legacy export name; SESSION_ROLE is the current shape. */
 export const USER_ROLES = {
   ADMIN: "admin",
-  STAFF: "staff",
+  PROCUREMENT_OFFICER: "procurement_officer",
   VENDOR: "vendor",
 };
 
-// Vendor categories
+/** Canonical vendor business categories (values stored on Vendor.category; labels shown in UI). */
 export const VENDOR_CATEGORIES = [
   { value: "office_supplies", label: "Office Supplies" },
   { value: "it_equipment", label: "IT Equipment" },
@@ -57,6 +72,20 @@ export const VENDOR_CATEGORIES = [
   { value: "printing", label: "Printing Services" },
   { value: "other", label: "Other" },
 ];
+
+const VENDOR_CATEGORY_LABEL_MAP = Object.fromEntries(
+  VENDOR_CATEGORIES.map(({ value, label }) => [value, label]),
+);
+
+/** Display label for a stored category slug (e.g. office_supplies → "Office Supplies"). */
+export function getVendorCategoryLabel(slug) {
+  if (slug == null || slug === "") return "—";
+  const key = String(slug).trim();
+  return (
+    VENDOR_CATEGORY_LABEL_MAP[key] ??
+    key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+  );
+}
 
 // Purchase Request statuses
 export const PR_STATUS = {

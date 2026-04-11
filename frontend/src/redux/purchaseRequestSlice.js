@@ -1,20 +1,7 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
+import { getApiErrorMessage } from "@/utils/apiError";
 import { PURCHASE_REQUEST_API_END_POINT } from "@/utils/constant";
-
-function prErrorMessage(error, fallback) {
-  const data = error?.response?.data;
-  const raw = data?.message ?? data?.error;
-  if (Array.isArray(raw)) return raw.map(String).join(", ");
-  if (typeof raw === "string" && raw.trim()) return raw;
-  if (error?.message === "Network Error") {
-    return "Cannot reach the server. Check that the API is running and try again.";
-  }
-  if (typeof error?.message === "string" && error.message.includes("status code")) {
-    return error.message;
-  }
-  return fallback;
-}
 
 export const createPurchaseRequest = createAsyncThunk(
   "purchaseRequest/create",
@@ -30,7 +17,7 @@ export const createPurchaseRequest = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error creating purchase request"
+        getApiErrorMessage(error, "Error creating purchase request"),
       );
     }
   }
@@ -47,7 +34,7 @@ export const getAllPurchaseRequests = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        prErrorMessage(error, "Error fetching purchase requests"),
+        getApiErrorMessage(error, "Error fetching purchase requests"),
       );
     }
   }
@@ -64,7 +51,7 @@ export const getMyPurchaseRequests = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error fetching your purchase requests"
+        getApiErrorMessage(error, "Error fetching your purchase requests"),
       );
     }
   }
@@ -83,7 +70,7 @@ export const getPurchaseRequestById = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        prErrorMessage(error, "Error fetching purchase request"),
+        getApiErrorMessage(error, "Error fetching purchase request"),
       );
     }
   }
@@ -103,7 +90,7 @@ export const updatePurchaseRequest = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error updating purchase request"
+        getApiErrorMessage(error, "Error updating purchase request"),
       );
     }
   }
@@ -123,7 +110,7 @@ export const submitForApproval = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error submitting for approval"
+        getApiErrorMessage(error, "Error submitting for approval"),
       );
     }
   }
@@ -141,7 +128,7 @@ export const cancelPurchaseRequest = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error cancelling purchase request"
+        getApiErrorMessage(error, "Error cancelling purchase request"),
       );
     }
   }
@@ -160,7 +147,7 @@ export const getPurchaseRequestStats = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error fetching statistics"
+        getApiErrorMessage(error, "Error fetching statistics"),
       );
     }
   }
@@ -183,7 +170,7 @@ export const deletePurchaseRequest = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error deleting purchase request"
+        getApiErrorMessage(error, "Error deleting purchase request"),
       );
     }
   }
@@ -203,7 +190,7 @@ export const restorePurchaseRequest = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error restoring purchase request"
+        getApiErrorMessage(error, "Error restoring purchase request"),
       );
     }
   }

@@ -11,6 +11,12 @@ import { useDispatch, useSelector } from "react-redux";
 import { setLoading, setUser, setToken } from "@/redux/authSlice";
 import { persistor } from "@/redux/store";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
+import {
+  SESSION_ROLE,
+  mapApiRoleToSession,
+  getRoleLabel,
+} from "@/constants/userRoles";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 const Login = () => {
   const [input, setInput] = useState({
@@ -39,14 +45,10 @@ const Login = () => {
         email: input.email,
         password: input.password,
       });
-      // backend returns { token, user: {...} } with role like "ADMIN" / "VENDOR"
+      // Login payload mirrors JWT: uppercase role strings before we map to session slugs.
 
       const rawUser = res.data.user;
-      const apiRole = String(rawUser.role || "").toUpperCase();
-      let mappedRole = "vendor";
-      if (apiRole === "ADMIN") mappedRole = "admin";
-      else if (apiRole === "PROCUREMENT_OFFICER") mappedRole = "staff";
-      else if (apiRole === "VENDOR") mappedRole = "vendor";
+      const mappedRole = mapApiRoleToSession(rawUser.role);
       const normalizedUser = {
         ...rawUser,
         role: mappedRole,
@@ -55,7 +57,7 @@ const Login = () => {
       const requestedRole = String(input.role || "").toLowerCase();
       if (requestedRole && requestedRole !== normalizedUser.role) {
         toast.error(
-          `This account is registered as "${normalizedUser.role}". Please select the correct role to login.`,
+          `This account is registered as “${getRoleLabel(normalizedUser.role)}”. Please select that role to sign in.`,
         );
         dispatch(setLoading(false));
         return;
@@ -63,14 +65,14 @@ const Login = () => {
 
       dispatch(setUser(normalizedUser));
       dispatch(setToken(res.data.token));
-      // Ensure axios interceptor can attach the token (it reads from localStorage).
+      // The interceptor reads `token` from localStorage on the next request, so it must exist before navigation.
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("user", JSON.stringify(normalizedUser));
 
-      // Don’t block navigation on persist I/O — flush in background (login felt slow waiting here).
+      // Persist can lag disk I/O; flushing in the background kept login from feeling stuck.
       void persistor.flush().catch(() => {});
 
-      if (normalizedUser.role === "admin") {
+      if (normalizedUser.role === SESSION_ROLE.ADMIN) {
         navigate("/admin");
       } else {
         navigate("/");
@@ -78,25 +80,14 @@ const Login = () => {
       toast.success("Login successful");
     } catch (error) {
       console.error(error);
-      const data = error?.response?.data;
-      let msg = null;
-      if (typeof data === "string" && data.trim()) {
-        msg = data.replace(/<[^>]*>/g, "").trim().slice(0, 240);
-      } else if (data && typeof data === "object") {
-        const serverMsg = data.message ?? data.error;
-        msg =
-          (Array.isArray(serverMsg) ? serverMsg.join(", ") : serverMsg) || null;
-      }
-      if (!msg && error?.response?.status === 403) {
-        msg =
-          "Sign-in is not allowed yet. If you just registered as a vendor, wait until an administrator approves your account.";
-      }
-      const st = error?.response?.status;
-      if (!msg && (st === 500 || st === 502)) {
-        msg =
-          "API error while signing in. Run the backend until the terminal shows the server port, restart the frontend dev server if you changed backend/.env PORT, then try again.";
-      }
-      toast.error(msg || error?.message || "Login failed");
+      toast.error(
+        getApiErrorMessage(error, "Login failed", {
+          forbiddenHint:
+            "Sign-in is not allowed yet. If you just registered as a vendor, wait until an administrator approves your account.",
+          serverErrorHint:
+            "API error while signing in. Run the backend until the terminal shows the server port, restart the frontend dev server if you changed backend/.env PORT, then try again.",
+        }),
+      );
     } finally {
       dispatch(setLoading(false));
     }
@@ -104,7 +95,7 @@ const Login = () => {
   useEffect(() => {
     if (user) {
       const role = String(user.role || "").toLowerCase();
-      if (role === "admin") {
+      if (role === SESSION_ROLE.ADMIN) {
         navigate("/admin");
       } else {
         navigate("/");
@@ -164,40 +155,44 @@ const Login = () => {
                 </div>
               </div>
               <div>
-                <Label className="text-xs block mb-1">Login as</Label>
-                <RadioGroup className="flex flex-wrap gap-4 text-xs">
-                  <label className="flex items-center gap-2 cursor-pointer">
+                <Label className="text-xs block mb-1">Sign in as</Label>
+                <p className="mb-2 text-[11px] leading-snug text-slate-500">
+                  Choose the type that matches your account. The system has three
+                  roles: administrator, procurement officer, and vendor.
+                </p>
+                <RadioGroup className="flex flex-col gap-1 text-xs sm:flex-row sm:flex-wrap sm:gap-4">
+                  <label className="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-lg px-1 py-1 sm:min-h-0 sm:px-0">
                     <Input
                       type="radio"
                       name="role"
-                      value="admin"
-                      checked={input.role === "admin"}
+                      value={SESSION_ROLE.ADMIN}
+                      checked={input.role === SESSION_ROLE.ADMIN}
                       onChange={changeEventHandler}
                       className="cursor-pointer h-3 w-3"
                     />
-                    <span>Administrator</span>
+                    <span>{getRoleLabel(SESSION_ROLE.ADMIN)}</span>
                   </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
+                  <label className="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-lg px-1 py-1 sm:min-h-0 sm:px-0">
                     <Input
                       type="radio"
                       name="role"
-                      value="staff"
-                      checked={input.role === "staff"}
+                      value={SESSION_ROLE.PROCUREMENT_OFFICER}
+                      checked={input.role === SESSION_ROLE.PROCUREMENT_OFFICER}
                       onChange={changeEventHandler}
                       className="cursor-pointer h-3 w-3"
                     />
-                    <span>Procurement Staff</span>
+                    <span>{getRoleLabel(SESSION_ROLE.PROCUREMENT_OFFICER)}</span>
                   </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
+                  <label className="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-lg px-1 py-1 sm:min-h-0 sm:px-0">
                     <Input
                       type="radio"
                       name="role"
-                      value="vendor"
-                      checked={input.role === "vendor"}
+                      value={SESSION_ROLE.VENDOR}
+                      checked={input.role === SESSION_ROLE.VENDOR}
                       onChange={changeEventHandler}
                       className="cursor-pointer h-3 w-3"
                     />
-                    <span>Vendor</span>
+                    <span>{getRoleLabel(SESSION_ROLE.VENDOR)}</span>
                   </label>
                 </RadioGroup>
               </div>

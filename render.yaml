@@ -5,8 +5,8 @@ services:
     rootDir: backend
     plan: free
     autoDeploy: true
-    # With NODE_ENV=production, plain npm install omits devDependencies — tsc and @types/* disappear.
-    buildCommand: npm install --include=dev && npm run build
+    # With NODE_ENV=production, `npm ci` omits devDependencies — TypeScript must be installed for `tsc`.
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run start
     healthCheckPath: /api/health
     envVars:

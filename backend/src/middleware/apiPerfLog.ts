@@ -1,13 +1,13 @@
 import type { RequestHandler, Response } from 'express';
+import { isApiPerfLoggingEnabled } from '../config/runtimeFlags';
 import { perfLabel } from '../utils/perfTiming';
 
 /**
- * When API_PERF_LOG=1 or true: logs wall time (console.time/timeEnd) and JSON payload size
- * for responses sent via res.json(). One label per request (safe under concurrency).
+ * When API_PERF_LOG=1: logs wall time and JSON payload size for res.json() responses.
+ * In production, also set API_PERF_IN_PRODUCTION=1 or this middleware stays off.
  */
 export const apiPerfLogMiddleware: RequestHandler = (req, res, next) => {
-  const on =
-    process.env.API_PERF_LOG === '1' || process.env.API_PERF_LOG === 'true';
+  const on = isApiPerfLoggingEnabled();
   if (!on) {
     next();
     return;

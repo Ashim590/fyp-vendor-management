@@ -1,16 +1,14 @@
 import mongoose, { Schema, Document } from "mongoose";
+import {
+  DELIVERY_STATUS,
+  DeliveryWorkflowStatus,
+  normalizeDeliveryStatus,
+} from "../constants/deliveryWorkflow";
 
-export type DeliveryStatus =
-  | "pending"
-  | "shipped"
-  | "in_transit"
-  | "delivered"
-  | "received"
-  | "inspected"
-  | "rejected";
+export type DeliveryStatus = DeliveryWorkflowStatus;
 
 export interface IDeliveryStatusEntry {
-  status: DeliveryStatus;
+  status: string;
   note?: string;
   at: Date;
   byUser?: mongoose.Types.ObjectId;
@@ -28,7 +26,11 @@ export interface IDeliveryItem {
 }
 
 export interface IDelivery extends Document {
+  /** Backward-compatible mirror of `status` for reporting/UI payloads. */
+  deliveryStatus?: string;
   deliveryNumber: string;
+  /** Duplicate of orderReference for API clarity (audit / integrations). */
+  orderRef: string;
   /** Legacy PO-based delivery */
   purchaseOrder?: mongoose.Types.ObjectId;
   purchaseOrderNumber: string;
@@ -45,7 +47,17 @@ export interface IDelivery extends Document {
 
   expectedDate: Date;
   actualDate?: Date;
+  /** Timestamp when procurement geo-confirms receipt. */
+  deliveredAt?: Date;
   status: DeliveryStatus;
+  deliveryLocation?: {
+    type: "Point";
+    coordinates: [number, number]; // [longitude, latitude]
+  };
+  /** Optional proof from vendor before procurement verification. */
+  vendorProofImage?: string;
+  /** Proof image from procurement geo-confirmation (or legacy field name). */
+  deliveryProofImage?: string;
 
   statusHistory: IDeliveryStatusEntry[];
 
@@ -65,6 +77,18 @@ export interface IDelivery extends Document {
   };
 }
 
+/** Canonical + legacy lowercase (pre-validate normalizes to uppercase on save). */
+const DELIVERY_STATUS_ENUM = [
+  ...Object.values(DELIVERY_STATUS),
+  "pending",
+  "shipped",
+  "in_transit",
+  "delivered",
+  "received",
+  "inspected",
+  "rejected",
+];
+
 const DeliveryItemSchema = new Schema<IDeliveryItem>(
   {
     itemName: { type: String, required: true, trim: true },
@@ -80,19 +104,7 @@ const DeliveryItemSchema = new Schema<IDeliveryItem>(
 
 const StatusHistorySchema = new Schema<IDeliveryStatusEntry>(
   {
-    status: {
-      type: String,
-      enum: [
-        "pending",
-        "shipped",
-        "in_transit",
-        "delivered",
-        "received",
-        "inspected",
-        "rejected",
-      ],
-      required: true,
-    },
+    status: { type: String, required: true, trim: true },
     note: { type: String, default: "" },
     at: { type: Date, default: Date.now },
     byUser: { type: Schema.Types.ObjectId, ref: "User" },
@@ -103,7 +115,13 @@ const StatusHistorySchema = new Schema<IDeliveryStatusEntry>(
 
 const DeliverySchema: Schema<IDelivery> = new Schema(
   {
+    deliveryStatus: {
+      type: String,
+      enum: DELIVERY_STATUS_ENUM,
+      default: DELIVERY_STATUS.PENDING,
+    },
     deliveryNumber: { type: String, unique: true, index: true },
+    orderRef: { type: String, default: "", trim: true, index: true },
     purchaseOrder: {
       type: Schema.Types.ObjectId,
       ref: "PurchaseOrder",
@@ -130,19 +148,23 @@ const DeliverySchema: Schema<IDelivery> = new Schema(
 
     expectedDate: { type: Date },
     actualDate: { type: Date },
+    deliveredAt: { type: Date },
     status: {
       type: String,
-      enum: [
-        "pending",
-        "shipped",
-        "in_transit",
-        "delivered",
-        "received",
-        "inspected",
-        "rejected",
-      ],
-      default: "pending",
+      enum: DELIVERY_STATUS_ENUM,
+      default: DELIVERY_STATUS.PENDING,
     },
+    deliveryLocation: {
+      type: {
+        type: String,
+        enum: ["Point"],
+      },
+      coordinates: {
+        type: [Number],
+      },
+    },
+    vendorProofImage: { type: String, default: "" },
+    deliveryProofImage: { type: String, default: "" },
 
     statusHistory: { type: [StatusHistorySchema], default: [] },
 
@@ -179,11 +201,64 @@ DeliverySchema.pre("validate", function (next) {
     if (this.purchaseOrderNumber)
       this.orderReference = this.purchaseOrderNumber;
   }
+  if (!this.orderRef && this.orderReference) {
+    this.orderRef = this.orderReference;
+  }
+  if (!this.orderReference && this.orderRef) {
+    this.orderReference = this.orderRef;
+  }
+
+  this.status = normalizeDeliveryStatus(this.status as string);
+  this.deliveryStatus = this.status;
+
+  // Keep geo field optional and valid for 2dsphere index.
+  const coords = this.deliveryLocation?.coordinates;
+  const hasValidCoords =
+    Array.isArray(coords) &&
+    coords.length >= 2 &&
+    Number.isFinite(coords[0]) &&
+    Number.isFinite(coords[1]);
+  if (!hasValidCoords) {
+    this.deliveryLocation = undefined;
+  } else if (this.deliveryLocation) {
+    this.deliveryLocation.type = "Point";
+    this.deliveryLocation.coordinates = [Number(coords[0]), Number(coords[1])] as [
+      number,
+      number,
+    ];
+  }
   next();
 });
 
 DeliverySchema.pre("save", async function (next) {
   try {
+    this.deliveryStatus = this.status;
+
+    /** After geo-verification, lock proof fields for audit integrity (NGO procurement). */
+    if (!this.isNew && this._id) {
+      const prev = (await mongoose
+        .model("Delivery")
+        .findById(this._id)
+        .select("status")
+        .lean()) as { status?: string } | null;
+      if (
+        prev &&
+        normalizeDeliveryStatus(prev.status as string) === DELIVERY_STATUS.VERIFIED
+      ) {
+        if (
+          this.isModified("deliveryLocation") ||
+          this.isModified("deliveredAt") ||
+          this.isModified("receivedData")
+        ) {
+          return next(
+            new Error(
+              "Verified delivery geo proof (location, deliveredAt, received data) is immutable",
+            ),
+          );
+        }
+      }
+    }
+
     if (!this.deliveryNumber) {
       const count = await mongoose.model("Delivery").countDocuments();
       this.deliveryNumber = `DL-${String(count + 1).padStart(6, "0")}`;
@@ -195,11 +270,18 @@ DeliverySchema.pre("save", async function (next) {
 });
 
 DeliverySchema.index({ status: 1 });
-/** Vendor delivery history / dashboards */
+DeliverySchema.index(
+  { deliveryLocation: "2dsphere" },
+  {
+    sparse: true,
+    partialFilterExpression: {
+      "deliveryLocation.type": "Point",
+      "deliveryLocation.coordinates.1": { $exists: true },
+    },
+  },
+);
 DeliverySchema.index({ vendor: 1, createdAt: -1 });
-/** On-time delivery aggregate: status + both dates present */
 DeliverySchema.index({ status: 1, actualDate: 1, expectedDate: 1 });
-/** Dashboard: deliveries with a recorded delay (prefer $ne: '' over regex) */
 DeliverySchema.index({ delayReason: 1 }, { sparse: true });
 
 export default mongoose.model<IDelivery>("Delivery", DeliverySchema);

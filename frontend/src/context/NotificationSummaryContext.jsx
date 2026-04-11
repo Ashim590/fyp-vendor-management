@@ -15,6 +15,9 @@ import {
   SESSION_API_END_POINT,
 } from "@/utils/constant";
 import { getAuthHeaderFromStorage } from "@/utils/authHeader";
+import { SESSION_ROLE } from "@/constants/userRoles";
+import { getNotificationLinkTarget } from "@/utils/notificationNavigation";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 const NotificationSummaryContext = createContext(null);
 
@@ -34,6 +37,7 @@ function notificationReducer(state, action) {
       };
     case "markOneRead": {
       const idStr = String(action.id);
+      const readAt = new Date().toISOString();
       let dec = 0;
       let decType = "";
       const notifications = state.notifications.map((n) => {
@@ -42,7 +46,7 @@ function notificationReducer(state, action) {
           dec = 1;
           decType = String(n.type || "");
         }
-        return { ...n, read: true };
+        return { ...n, read: true, readAt };
       });
       const unreadByType = { ...(state.unreadByType || {}) };
       if (dec === 1 && decType) {
@@ -54,28 +58,16 @@ function notificationReducer(state, action) {
         unreadByType,
       };
     }
-    case "markAllRead":
+    case "markAllRead": {
+      const readAt = new Date().toISOString();
       return {
-        notifications: state.notifications.map((n) => ({ ...n, read: true })),
+        notifications: state.notifications.map((n) => ({
+          ...n,
+          read: true,
+          readAt: n.read ? n.readAt : readAt,
+        })),
         unreadCount: 0,
         unreadByType: {},
-      };
-    case "dismissOne": {
-      const idStr = String(action.id);
-      const target = state.notifications.find((n) => String(n._id) === idStr);
-      const wasUnread = target && !target.read ? 1 : 0;
-      const targetType = String(target?.type || "");
-      const unreadByType = { ...(state.unreadByType || {}) };
-      if (wasUnread && targetType) {
-        unreadByType[targetType] = Math.max(
-          0,
-          Number(unreadByType[targetType] || 0) - 1,
-        );
-      }
-      return {
-        notifications: state.notifications.filter((n) => String(n._id) !== idStr),
-        unreadCount: Math.max(0, state.unreadCount - wasUnread),
-        unreadByType,
       };
     }
     case "reset":
@@ -86,15 +78,17 @@ function notificationReducer(state, action) {
 }
 
 function isProcurementStaffRole(role) {
-  return role === "staff";
+  const r = String(role || "").toLowerCase();
+  return r === SESSION_ROLE.PROCUREMENT_OFFICER || r === "staff";
 }
 
-/** Polling interval — higher = less DB/API load (staff-home is one heavier round-trip). */
+/** Staff bootstrap is heavier than a bare notification fetch, so the poll interval stays relaxed. */
 const STAFF_WORKSPACE_POLL_MS = 240_000;
 
 /**
- * Shared notification list + unread count for navbar bell and sidebar badge.
- * Procurement staff: first load uses /session/staff-home (dashboard + notifications in one request).
+ * Central place for unread counts and the notification list: bell, sidebar badges, and
+ * the full page all subscribe here. Procurement officers get their first payload from
+ * `/session/staff-home` because that route already bundles dashboard + notifications.
  */
 export function NotificationSummaryProvider({ children }) {
   const location = useLocation();
@@ -107,7 +101,7 @@ export function NotificationSummaryProvider({ children }) {
     dashboard: null,
     loading: false,
     error: null,
-    /** True after first /staff-home attempt finishes (success or failure). */
+    /** Lets the UI distinguish “still loading staff workspace” from “loaded but empty”. */
     ready: false,
   });
 
@@ -171,10 +165,7 @@ export function NotificationSummaryProvider({ children }) {
           ready: true,
         });
       } catch (e) {
-        const msg =
-          e?.response?.data?.message ||
-          e?.message ||
-          "Could not load workspace";
+        const msg = getApiErrorMessage(e, "Could not load workspace");
         if (!silent) {
           setStaffWorkspace({
             dashboard: null,
@@ -232,7 +223,7 @@ export function NotificationSummaryProvider({ children }) {
       error: null,
       ready: false,
     });
-    /** Defer slightly so primary route (e.g. admin dashboard report) can start first. */
+    /** Small delay so the first paint can go to the route’s own data before this poll. */
     const boot = window.setTimeout(() => {
       fetchNotificationsOnly(false, 24);
     }, 120);
@@ -283,25 +274,6 @@ export function NotificationSummaryProvider({ children }) {
       });
   }, [isStaff, loadStaffHome, fetchNotificationsOnly]);
 
-  const dismissNotification = useCallback(
-    (id) => {
-      dispatch({ type: "dismissOne", id });
-      axios
-        .delete(`${NOTIFICATION_API_END_POINT}/${id}`, {
-          withCredentials: true,
-          headers: getAuthHeaderFromStorage(),
-        })
-        .catch(() => {
-          if (isStaff) {
-            loadStaffHome({ silent: true, notificationLimit: 24 });
-          } else {
-            fetchNotificationsOnly(true, 24);
-          }
-        });
-    },
-    [isStaff, loadStaffHome, fetchNotificationsOnly],
-  );
-
   useEffect(() => {
     const currentPath = String(location.pathname || "").trim();
     if (!currentPath) return;
@@ -315,15 +287,8 @@ export function NotificationSummaryProvider({ children }) {
     const idsToRead = state.notifications
       .filter((n) => !n.read)
       .filter((n) => {
-        const raw = String(n?.link || "").trim();
-        if (!raw || raw === "#") return false;
-        const normalized =
-          n?.type === "bid_accepted"
-            ? (() => {
-                const bidParam = raw.match(/[?&]openBid=([a-f\d]{24})/i)?.[1];
-                return bidParam ? `/my-bids?openBid=${bidParam}` : "/my-bids";
-              })()
-            : raw;
+        const normalized = getNotificationLinkTarget(n);
+        if (!normalized || normalized === "#") return false;
 
         const [targetPathRaw, targetQueryRaw = ""] = normalized.split("?");
         const targetPath = String(targetPathRaw || "").trim();
@@ -365,7 +330,6 @@ export function NotificationSummaryProvider({ children }) {
       refresh,
       markAsRead,
       markAllRead,
-      dismissNotification,
     }),
     [
       state.notifications,
@@ -377,7 +341,6 @@ export function NotificationSummaryProvider({ children }) {
       refresh,
       markAsRead,
       markAllRead,
-      dismissNotification,
     ],
   );
 
@@ -400,7 +363,6 @@ export function useNotificationSummary() {
       refresh: () => {},
       markAsRead: () => {},
       markAllRead: () => {},
-      dismissNotification: () => {},
     };
   }
   return ctx;

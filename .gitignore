@@ -11,6 +11,8 @@ backend/dist/
 .env.*
 !.env.example
 !**/.env.example
+!**/.env.production.example
+!**/.env.development.example
 
 # Local / editor
 .DS_Store

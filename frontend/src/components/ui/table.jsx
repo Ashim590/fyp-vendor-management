@@ -3,11 +3,11 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 const Table = React.forwardRef(({ className, ...props }, ref) => (
-  <div className="relative w-full max-w-full overflow-x-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
+  <div className="relative w-full max-w-full overflow-x-auto overscroll-x-contain rounded-2xl border border-slate-200/90 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06)] [touch-action:pan-x] [-webkit-overflow-scrolling:touch]">
     <table
       ref={ref}
       className={cn(
-        "w-full min-w-0 border-collapse caption-bottom text-sm",
+        "w-full min-w-[680px] border-collapse caption-bottom text-sm sm:min-w-full",
         className,
       )}
       {...props} />

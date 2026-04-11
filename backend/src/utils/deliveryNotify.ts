@@ -2,11 +2,14 @@ import mongoose from 'mongoose';
 import User from '../models/User';
 import Notification from '../models/Notification';
 import type { NotificationType } from '../models/Notification';
+import { roleTargetFromUserRole } from './notificationRoleTarget';
 
 export async function notifyDeliveryEvent(params: {
   title: string;
   body: string;
   vendorId: mongoose.Types.ObjectId;
+  /** Ties the notification back to the delivery record in reporting and deep links. */
+  deliveryId: mongoose.Types.ObjectId;
   type: NotificationType;
   excludeUserId?: mongoose.Types.ObjectId;
 }): Promise<void> {
@@ -25,14 +28,22 @@ export async function notifyDeliveryEvent(params: {
 
   if (userIds.size === 0) return;
 
+  const ids = [...userIds].map((id) => new mongoose.Types.ObjectId(id));
+  const users = await User.find({ _id: { $in: ids } })
+    .select('_id role')
+    .lean();
+  if (!users.length) return;
+
   await Notification.insertMany(
-    [...userIds].map((userId) => ({
-      user: new mongoose.Types.ObjectId(userId),
+    users.map((u) => ({
+      user: u._id,
       title: params.title,
       body: params.body,
       link: '/deliveries',
       read: false,
-      type: params.type
+      type: params.type,
+      referenceId: params.deliveryId,
+      roleTarget: roleTargetFromUserRole(u.role),
     }))
   );
 }

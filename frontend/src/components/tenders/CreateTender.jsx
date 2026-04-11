@@ -4,6 +4,7 @@ import axios from "axios";
 import { TENDER_API_END_POINT } from "@/utils/constant";
 import { Button } from "../ui/button";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 const CreateTender = () => {
   const navigate = useNavigate();
@@ -48,7 +49,7 @@ const CreateTender = () => {
       toast.success("Tender created.");
       navigate(`/tenders/${res.data.tender._id}`);
     } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to create tender");
+      toast.error(getApiErrorMessage(err, "Failed to create tender"));
     } finally {
       setLoading(false);
     }

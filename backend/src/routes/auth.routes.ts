@@ -1,4 +1,5 @@
 import { Router } from "express";
+import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import multer from "multer";
@@ -22,7 +23,7 @@ import {
 } from "../utils/cursorPagination";
 import { bustAuthUserCache } from "../utils/authUserCache";
 import { safeClientProfilePhoto } from "../utils/safeClientProfilePhoto";
-import { getJwtSecret } from "../config/secrets";
+import { getJwtExpiresIn, getJwtSecret } from "../config/secrets";
 
 const router = Router();
 
@@ -193,6 +194,7 @@ router.post(
       const hashed = await bcrypt.hash(String(password), 10);
 
       let rollbackVendorId: string | null = null;
+      let registeredVendorId: mongoose.Types.ObjectId | null = null;
       try {
         const vendorDoc: Record<string, unknown> = {
           name: orgName,
@@ -217,6 +219,7 @@ router.post(
         if (logoData) vendorDoc.logo = logoData;
 
         const vendor = await Vendor.create(vendorDoc);
+        registeredVendorId = vendor._id as mongoose.Types.ObjectId;
         rollbackVendorId = String(vendor._id);
 
         const fallbackUserName =
@@ -243,6 +246,7 @@ router.post(
         title: "New vendor pending review",
         body: `${orgName} (${emailNorm}) submitted a registration and awaits approval.`,
         type: "vendor_pending_review",
+        referenceId: registeredVendorId ?? undefined,
       });
 
       return res.status(201).json({
@@ -433,6 +437,7 @@ router.post("/register-vendor", async (req, res) => {
       title: "New vendor pending review",
       body: `${orgName} (${emailNorm}) registered via API and awaits approval.`,
       type: "vendor_pending_review",
+      referenceId: vendorProfile._id,
     });
 
     return res
@@ -462,7 +467,11 @@ router.post("/login", async (req, res) => {
     try {
       match = await bcrypt.compare(password, user.password);
     } catch (compareErr) {
-      console.error("login bcrypt.compare failed", compareErr);
+      if (process.env.NODE_ENV !== "production") {
+        console.error("login bcrypt.compare failed", compareErr);
+      } else {
+        console.error("login bcrypt.compare failed");
+      }
       return res.status(400).json({ message: "Invalid credentials" });
     }
     if (!match) {
@@ -513,7 +522,7 @@ router.post("/login", async (req, res) => {
       { userId: user._id, role: user.role },
       getJwtSecret(),
       {
-        expiresIn: "8h",
+        expiresIn: getJwtExpiresIn(),
       },
     );
 

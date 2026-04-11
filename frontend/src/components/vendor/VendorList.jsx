@@ -18,6 +18,8 @@ import {
   TableRow,
 } from "../ui/table";
 import { toast } from "sonner";
+import { LoadingState } from "../ui/loading-state";
+import { SESSION_ROLE } from "@/constants/userRoles";
 import {
   Search,
   CheckCircle,
@@ -31,7 +33,9 @@ import {
   List,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { getVendorCategoryLabel } from "@/utils/constant";
 import { WORKSPACE_DATA_TABLE_CLASS } from "../layout/WorkspacePageLayout";
+import { getApiErrorMessage } from "@/utils/apiError";
 import { cn } from "@/lib/utils";
 
 function truncateText(s, max = 140) {
@@ -68,7 +72,7 @@ const VendorList = () => {
   const dispatch = useDispatch();
   const { vendors, loading, error } = useSelector((store) => store.vendor);
   const { user } = useSelector((store) => store.auth);
-  const isStaff = user?.role === "staff";
+  const isStaff = user?.role === SESSION_ROLE.PROCUREMENT_OFFICER;
   const canApprove = user?.role === "admin";
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -80,7 +84,7 @@ const VendorList = () => {
 
   useEffect(() => {
     if (error) {
-      toast.error(error);
+      toast.error(getApiErrorMessage(error, "Could not load vendors."));
     }
   }, [error]);
 
@@ -90,7 +94,7 @@ const VendorList = () => {
       toast.success("Vendor approved successfully");
       dispatch(getAllVendors({ limit: 100 }));
     } catch (err) {
-      toast.error(err || "Failed to approve vendor");
+      toast.error(getApiErrorMessage(err, "Failed to approve vendor"));
     }
   };
 
@@ -104,7 +108,7 @@ const VendorList = () => {
         toast.success("Vendor rejected");
         dispatch(getAllVendors({ limit: 100 }));
       } catch (err) {
-        toast.error(err || "Failed to reject vendor");
+        toast.error(getApiErrorMessage(err, "Failed to reject vendor"));
       }
     }
   };
@@ -200,7 +204,7 @@ const VendorList = () => {
         </div>
 
         {loading ? (
-          <p className="text-center py-16 text-slate-500">Loading vendors…</p>
+          <LoadingState variant="page" label="Loading vendors…" />
         ) : filteredVendors.length === 0 ? (
           <p className="text-center py-16 text-slate-500">No vendors match your filters.</p>
         ) : layout === "cards" ? (
@@ -225,8 +229,8 @@ const VendorList = () => {
                         <span className="text-xs text-slate-500">
                           ★ {vendor.rating?.toFixed(1) ?? "—"}
                         </span>
-                        <span className="text-xs text-slate-500 capitalize">
-                          {vendor.category?.replace("_", " ") || "—"}
+                        <span className="text-xs text-slate-500">
+                          {getVendorCategoryLabel(vendor.category)}
                         </span>
                       </div>
                     </div>
@@ -346,8 +350,8 @@ const VendorList = () => {
                     <TableCell className="min-w-0 text-sm text-slate-600">
                       <span className="line-clamp-2 break-words">{locationLine(vendor)}</span>
                     </TableCell>
-                    <TableCell className="min-w-0 capitalize whitespace-nowrap">
-                      {vendor.category?.replace("_", " ")}
+                    <TableCell className="min-w-0 whitespace-nowrap">
+                      {getVendorCategoryLabel(vendor.category)}
                     </TableCell>
                     <TableCell className="min-w-0 truncate">{vendor.phoneNumber}</TableCell>
                     <TableCell className="min-w-0">{getStatusBadge(vendor.status)}</TableCell>

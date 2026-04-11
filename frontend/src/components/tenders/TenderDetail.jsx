@@ -11,12 +11,15 @@ import { useSelector } from "react-redux";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { toast } from "sonner";
+import { SESSION_ROLE } from "@/constants/userRoles";
+import { getApiErrorMessage } from "@/utils/apiError";
 import SubmitBidForm from "./SubmitBidForm";
 import { motion } from "framer-motion";
 import { LoadingSkeleton } from "../shared/LoadingSkeleton";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { WorkspaceSegmentedControl } from "../layout/WorkspacePageLayout";
 import { BarChart3 } from "lucide-react";
+import { getTechnicalProposalDisplayText } from "@/utils/technicalProposal";
 
 const statusConfig = {
   DRAFT: { label: "Draft", className: "bg-slate-200 text-slate-800" },
@@ -51,9 +54,9 @@ const TenderDetail = () => {
   const [quotationComparison, setQuotationComparison] = useState(null);
   const [comparisonLoading, setComparisonLoading] = useState(false);
 
-  const isOfficerOrAdmin = user?.role === "admin" || user?.role === "staff";
+  const isOfficerOrAdmin = user?.role === SESSION_ROLE.ADMIN || user?.role === SESSION_ROLE.PROCUREMENT_OFFICER;
   const isAdmin = user?.role === "admin";
-  const isOfficer = user?.role === "staff";
+  const isOfficer = user?.role === SESSION_ROLE.PROCUREMENT_OFFICER;
   const isVendor = user?.role === "vendor";
 
   const staffCanSelectOrAward =
@@ -98,6 +101,9 @@ const TenderDetail = () => {
     return t.length <= max ? t : `${t.slice(0, max)}…`;
   };
 
+  const technicalExcerpt = (raw) =>
+    excerpt(getTechnicalProposalDisplayText(raw));
+
   const loadTender = () => {
     setLoading(true);
     setLoadError("");
@@ -106,11 +112,7 @@ const TenderDetail = () => {
       .then((res) => setTender(res.data.tender))
       .catch((err) => {
         setTender(null);
-        setLoadError(
-          err?.response?.data?.message ||
-            err?.message ||
-            "Could not load this tender.",
-        );
+        setLoadError(getApiErrorMessage(err, "Could not load this tender."));
       })
       .finally(() => setLoading(false));
   };
@@ -287,11 +289,7 @@ const TenderDetail = () => {
       });
       setStaffTenderPayments(res.data?.payments || []);
     } catch (err) {
-      toast.error(
-        err?.response?.data?.message ||
-          err?.message ||
-          "Could not create payment.",
-      );
+      toast.error(getApiErrorMessage(err, "Could not create payment."));
     } finally {
       setPaymentBusy(false);
     }
@@ -308,7 +306,9 @@ const TenderDetail = () => {
         setTender(res.data.tender);
         toast.success("Tender published.");
       })
-      .catch(() => toast.error("Failed to publish"));
+      .catch((err) =>
+        toast.error(getApiErrorMessage(err, "Failed to publish tender.")),
+      );
   };
 
   const handleClose = () => {
@@ -322,7 +322,9 @@ const TenderDetail = () => {
         setTender(res.data.tender);
         toast.success("Tender closed.");
       })
-      .catch(() => toast.error("Failed to close"));
+      .catch((err) =>
+        toast.error(getApiErrorMessage(err, "Failed to close tender.")),
+      );
   };
 
   const openWithdrawTenderConfirm = () => {
@@ -351,9 +353,7 @@ const TenderDetail = () => {
             setConfirmConfig(null);
           }
         } catch (err) {
-          toast.error(
-            err.response?.data?.message || "Failed to withdraw tender",
-          );
+          toast.error(getApiErrorMessage(err, "Failed to withdraw tender"));
         }
       },
     });
@@ -374,7 +374,7 @@ const TenderDetail = () => {
           setConfirmConfig(null);
           navigate("/tenders");
         } catch (err) {
-          toast.error(err.response?.data?.message || "Failed to delete tender");
+          toast.error(getApiErrorMessage(err, "Failed to delete tender"));
         }
       },
     });
@@ -398,7 +398,7 @@ const TenderDetail = () => {
           loadTender();
         } catch (err) {
           toast.error(
-            err.response?.data?.message || "Could not withdraw quotation",
+            getApiErrorMessage(err, "Could not withdraw quotation"),
           );
         }
       },
@@ -426,11 +426,7 @@ const TenderDetail = () => {
           loadBids();
           navigate(`/tenders/${id}`, { replace: true });
         } catch (err) {
-          const msg =
-            err?.response?.data?.message ||
-            err?.message ||
-            "Failed to select quotation.";
-          toast.error(msg);
+          toast.error(getApiErrorMessage(err, "Failed to select quotation."));
         }
       },
     });
@@ -449,22 +445,15 @@ const TenderDetail = () => {
           const token = localStorage.getItem("token");
           const headers = token ? { Authorization: `Bearer ${token}` } : {};
           const vid = acceptedBid.vendor?._id || acceptedBid.vendor;
-          const res = await axios.patch(
+          await axios.patch(
             `${TENDER_API_END_POINT}/${tender._id}/award`,
             { awardedVendor: vid },
             { withCredentials: true, headers },
           );
-          if (res.data?.tender) setTender(res.data.tender);
-          toast.success("Tender awarded.");
           setConfirmConfig(null);
-          loadTender();
-          loadBids();
+          navigate("/procurement/payments");
         } catch (err) {
-          const msg =
-            err?.response?.data?.message ||
-            err?.message ||
-            "Failed to award tender.";
-          toast.error(msg);
+          toast.error(getApiErrorMessage(err, "Failed to award tender."));
         }
       },
     });
@@ -482,7 +471,9 @@ const TenderDetail = () => {
         toast.success("Quotation marked as not selected.");
         loadBids();
       })
-      .catch(() => toast.error("Failed to update quotation."));
+      .catch((err) =>
+        toast.error(getApiErrorMessage(err, "Failed to update quotation.")),
+      );
   };
 
   const openDeleteBidConfirm = (bidId) => {
@@ -501,9 +492,7 @@ const TenderDetail = () => {
           loadBids();
           loadTender();
         } catch (err) {
-          toast.error(
-            err.response?.data?.message || "Failed to remove quotation",
-          );
+          toast.error(getApiErrorMessage(err, "Failed to remove quotation"));
         }
       },
     });
@@ -511,7 +500,6 @@ const TenderDetail = () => {
 
   const onBidSubmitted = () => {
     setShowBidForm(false);
-    toast.success("Quotation submitted.");
     loadTender();
     if (isOfficerOrAdmin) loadBids();
     loadMyBid();
@@ -534,11 +522,7 @@ const TenderDetail = () => {
       toast.success("Question posted.");
       loadClarifications();
     } catch (err) {
-      toast.error(
-        err?.response?.data?.message ||
-          err?.message ||
-          "Failed to post question.",
-      );
+      toast.error(getApiErrorMessage(err, "Failed to post question."));
     } finally {
       setQuestionBusy(false);
     }
@@ -561,7 +545,7 @@ const TenderDetail = () => {
       loadClarifications();
     } catch (err) {
       toast.error(
-        err?.response?.data?.message || "Failed to post clarification answer.",
+        getApiErrorMessage(err, "Failed to post clarification answer."),
       );
     }
   };
@@ -628,6 +612,13 @@ const TenderDetail = () => {
       ? { label: "Closed", className: "bg-slate-200 text-slate-800" }
       : { label: cfg.label, className: cfg.className };
   const canBid = isVendor && tender.status === "PUBLISHED";
+  /** Vendor may open the quotation form for first submit or revision; finalized quotes stay read-only below. */
+  const vendorMayOpenQuotationForm =
+    !myBid || ["SUBMITTED", "UNDER_REVIEW"].includes(myBid.status);
+  const existingBidForForm =
+    myBid && ["SUBMITTED", "UNDER_REVIEW"].includes(myBid.status)
+      ? myBid
+      : null;
 
   return (
     <motion.div
@@ -744,19 +735,20 @@ const TenderDetail = () => {
               </div>
             )}
 
-          {canBid && (
+          {canBid && vendorMayOpenQuotationForm && (
             <div className="mt-6 pt-4 border-t">
               {!showBidForm ? (
                 <Button
                   onClick={() => setShowBidForm(true)}
                   className="bg-slate-900 hover:bg-slate-800"
                 >
-                  Submit quotation
+                  {existingBidForForm ? "Edit quotation" : "Submit quotation"}
                 </Button>
               ) : (
                 <SubmitBidForm
                   tenderId={tender._id}
                   tender={tender}
+                  existingBid={existingBidForForm}
                   onSuccess={onBidSubmitted}
                   onCancel={() => setShowBidForm(false)}
                 />
@@ -789,12 +781,11 @@ const TenderDetail = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
-                    Proposal
+                    Technical proposal
                   </p>
                   <p className="text-sm text-slate-700 whitespace-pre-wrap rounded-md bg-slate-50 p-3 border min-h-[4rem]">
-                    {myBid.technicalProposal?.trim()
-                      ? myBid.technicalProposal
-                      : "—"}
+                    {getTechnicalProposalDisplayText(myBid.technicalProposal) ||
+                      "—"}
                   </p>
                 </div>
                 <div>
@@ -1111,7 +1102,7 @@ const TenderDetail = () => {
                         <th className="px-4 py-3 text-right">Lead time</th>
                         <th className="px-4 py-3">Highlights</th>
                         <th className="px-4 py-3">Status</th>
-                        <th className="px-4 py-3">Proposal</th>
+                        <th className="px-4 py-3">Technical proposal</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
@@ -1205,7 +1196,7 @@ const TenderDetail = () => {
                               </Badge>
                             </td>
                             <td className="max-w-xs px-4 py-3 text-slate-600">
-                              {excerpt(bid.technicalProposal)}
+                              {technicalExcerpt(bid.technicalProposal)}
                             </td>
                           </tr>
                         );
@@ -1384,12 +1375,11 @@ const TenderDetail = () => {
                     <div className="grid grid-cols-1 gap-4 border-t border-slate-100 pt-5 md:grid-cols-2 md:gap-5">
                       <div>
                         <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                          Proposal
+                          Technical proposal
                         </p>
                         <p className="min-h-[4rem] whitespace-pre-wrap rounded-lg border border-slate-200/90 bg-slate-50/50 p-3.5 text-sm leading-relaxed text-slate-700">
-                          {bid.technicalProposal?.trim()
-                            ? bid.technicalProposal
-                            : "—"}
+                          {getTechnicalProposalDisplayText(bid.technicalProposal) ||
+                            "—"}
                         </p>
                       </div>
                       <div>

@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
+import { getApiErrorMessage } from "@/utils/apiError";
 import { PURCHASE_ORDER_API_END_POINT } from "@/utils/constant";
 
 export const createPurchaseOrder = createAsyncThunk(
@@ -16,7 +17,7 @@ export const createPurchaseOrder = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error creating purchase order"
+        getApiErrorMessage(error, "Error creating purchase order")
       );
     }
   }
@@ -33,7 +34,7 @@ export const getAllPurchaseOrders = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error fetching purchase orders"
+        getApiErrorMessage(error, "Error fetching purchase orders")
       );
     }
   }
@@ -52,7 +53,7 @@ export const getPurchaseOrderById = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error fetching purchase order"
+        getApiErrorMessage(error, "Error fetching purchase order")
       );
     }
   }
@@ -72,7 +73,7 @@ export const updatePurchaseOrder = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Error updating purchase order"
+        getApiErrorMessage(error, "Error updating purchase order")
       );
     }
   }

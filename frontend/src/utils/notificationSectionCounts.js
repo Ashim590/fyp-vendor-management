@@ -3,6 +3,8 @@
  * Uses notification `type` when known, otherwise matches `link` to a sidebar prefix.
  */
 
+import { SESSION_ROLE } from "@/constants/userRoles";
+
 const ORDERED_SIDEBAR_PREFIXES = {
   admin: [
     "/admin/users",
@@ -15,7 +17,7 @@ const ORDERED_SIDEBAR_PREFIXES = {
     "/tenders",
     "/deliveries",
   ],
-  staff: [
+  [SESSION_ROLE.PROCUREMENT_OFFICER]: [
     "/procurement/payments",
     "/invoices",
     "/purchase-requests",
@@ -34,22 +36,36 @@ const NON_WORKSPACE_PATHS = new Set([
   "/vendor-profile",
 ]);
 
-/** @type {Record<string, Partial<Record<'admin' | 'staff' | 'vendor', string[]>>>} */
+/** @type {Record<string, Partial<Record<'admin' | 'procurement_officer' | 'vendor', string[]>>>} */
 const TYPE_TO_PATHS = {
   vendor_pending_review: { admin: ["/admin"] },
   vendor_approved_staff: { admin: ["/admin"] },
   vendor_rejected_staff: { admin: ["/admin"] },
-  purchase_request_submitted: { admin: ["/approvals"], staff: ["/approvals"] },
-  purchase_request_approved: { admin: ["/approvals"], staff: ["/approvals"] },
-  purchase_request_rejected: { staff: ["/purchase-requests"] },
-  tender_auto_created: { admin: ["/tenders"], staff: ["/tenders"] },
+  purchase_request_submitted: {
+    admin: ["/approvals"],
+    [SESSION_ROLE.PROCUREMENT_OFFICER]: ["/approvals"],
+  },
+  purchase_request_approved: {
+    admin: ["/approvals"],
+    [SESSION_ROLE.PROCUREMENT_OFFICER]: ["/approvals"],
+  },
+  purchase_request_rejected: {
+    [SESSION_ROLE.PROCUREMENT_OFFICER]: ["/purchase-requests"],
+  },
+  tender_auto_created: {
+    admin: ["/tenders"],
+    [SESSION_ROLE.PROCUREMENT_OFFICER]: ["/tenders"],
+  },
   tender_created: { vendor: ["/tenders"] },
   tender_closed: {
     admin: ["/tenders"],
-    staff: ["/tenders"],
+    [SESSION_ROLE.PROCUREMENT_OFFICER]: ["/tenders"],
     vendor: ["/tenders"],
   },
-  bid_submitted: { admin: ["/bids-monitor"], staff: ["/bids-monitor"] },
+  bid_submitted: {
+    admin: ["/bids-monitor"],
+    [SESSION_ROLE.PROCUREMENT_OFFICER]: ["/bids-monitor"],
+  },
   bid_accepted: { vendor: ["/my-bids"] },
   bid_rejected: { vendor: ["/my-bids"] },
   payment_pending: { vendor: ["/my-payments"] },
@@ -59,27 +75,27 @@ const TYPE_TO_PATHS = {
   invoice_payment_paid: { vendor: ["/invoices"] },
   delivery_shipped: {
     admin: ["/deliveries"],
-    staff: ["/deliveries"],
+    [SESSION_ROLE.PROCUREMENT_OFFICER]: ["/deliveries"],
     vendor: ["/deliveries"],
   },
   delivery_in_transit: {
     admin: ["/deliveries"],
-    staff: ["/deliveries"],
+    [SESSION_ROLE.PROCUREMENT_OFFICER]: ["/deliveries"],
     vendor: ["/deliveries"],
   },
   delivery_delivered: {
     admin: ["/deliveries"],
-    staff: ["/deliveries"],
+    [SESSION_ROLE.PROCUREMENT_OFFICER]: ["/deliveries"],
     vendor: ["/deliveries"],
   },
   delivery_received: {
     admin: ["/deliveries"],
-    staff: ["/deliveries"],
+    [SESSION_ROLE.PROCUREMENT_OFFICER]: ["/deliveries"],
     vendor: ["/deliveries"],
   },
   delivery_delayed: {
     admin: ["/deliveries"],
-    staff: ["/deliveries"],
+    [SESSION_ROLE.PROCUREMENT_OFFICER]: ["/deliveries"],
     vendor: ["/deliveries"],
   },
 };
@@ -119,7 +135,7 @@ function isExcludedWorkspacePath(pathname) {
 
 /**
  * @param {string} link
- * @param {'admin' | 'staff' | 'vendor'} role
+ * @param {'admin' | 'procurement_officer' | 'vendor'} role
  * @returns {string | null}
  */
 export function matchNotificationLinkToSidebarPath(link, role) {
@@ -152,12 +168,20 @@ function pathsForUnreadNotification(notification, role) {
 
 /**
  * @param {Array<{ read?: boolean, type?: string, link?: string }>} notifications
- * @param {'admin' | 'staff' | 'vendor' | undefined} userRole
+ * @param {'admin' | 'procurement_officer' | 'vendor' | 'staff' | undefined} userRole
  * @param {Record<string, number> | undefined} unreadByType
  * @returns {Record<string, number>}
  */
 export function getUnreadCountsBySidebarPath(notifications, userRole, unreadByType) {
-  const role = userRole === "admin" || userRole === "staff" || userRole === "vendor" ? userRole : null;
+  const r = String(userRole || "").toLowerCase();
+  const role =
+    r === SESSION_ROLE.ADMIN
+      ? SESSION_ROLE.ADMIN
+      : r === SESSION_ROLE.PROCUREMENT_OFFICER || r === "staff"
+        ? SESSION_ROLE.PROCUREMENT_OFFICER
+        : r === SESSION_ROLE.VENDOR
+          ? SESSION_ROLE.VENDOR
+          : null;
   if (!role || !Array.isArray(notifications)) return {};
 
   const counts = {};

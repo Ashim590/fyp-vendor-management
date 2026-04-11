@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
   getAllDeliveries,
   getMyDeliveries,
   getDeliveryById,
-  receiveDelivery,
+  confirmDelivery,
   inspectDelivery,
   updateDeliveryStatus,
   recordDeliveryDelay,
@@ -29,6 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "../ui/table";
+import { LoadingState } from "../ui/loading-state";
 import { toast } from "sonner";
 import {
   Search,
@@ -41,6 +43,17 @@ import {
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import {
+  MapContainer,
+  Marker,
+  Popup,
+  TileLayer,
+} from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
+import markerIcon from "leaflet/dist/images/marker-icon.png";
+import markerShadow from "leaflet/dist/images/marker-shadow.png";
+import {
   WorkspacePageLayout,
   WorkspacePageHeader,
   WorkspaceToolbar,
@@ -48,9 +61,23 @@ import {
   WORKSPACE_DATA_TABLE_CLASS,
 } from "../layout/WorkspacePageLayout";
 import { cn } from "@/lib/utils";
+import {
+  DELIVERY_STATUS,
+  normalizeDeliveryStatus,
+  STATUS_LABELS,
+  statusLabel,
+} from "@/utils/deliveryWorkflow";
+import { SESSION_ROLE } from "@/constants/userRoles";
 
-const IN_PROGRESS_STATUSES = new Set(["pending", "shipped", "in_transit"]);
-const CLOSED_STATUSES = new Set(["received", "inspected"]);
+const DEFAULT_MARKER_ICON = L.icon({
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+});
 
 function hasRecordedDelay(d) {
   return Boolean(
@@ -58,30 +85,22 @@ function hasRecordedDelay(d) {
   );
 }
 
-const STATUS_LABELS = {
-  pending: "Pending",
-  shipped: "Shipped",
-  in_transit: "In transit",
-  delivered: "Delivered",
-  received: "Received & verified",
-  inspected: "Inspected",
-  rejected: "Rejected",
-};
-
 function nextVendorStatus(status) {
-  if (status === "pending") return "shipped";
-  if (status === "shipped") return "in_transit";
-  if (status === "in_transit") return "delivered";
+  const s = normalizeDeliveryStatus(status);
+  if (s === DELIVERY_STATUS.PENDING) return DELIVERY_STATUS.ACCEPTED;
+  if (s === DELIVERY_STATUS.ACCEPTED) return DELIVERY_STATUS.IN_TRANSIT;
+  if (s === DELIVERY_STATUS.IN_TRANSIT) return DELIVERY_STATUS.READY_FOR_CONFIRMATION;
   return null;
 }
 
 function nextVendorLabel(status) {
+  const s = normalizeDeliveryStatus(status);
   const m = {
-    pending: "Mark shipped",
-    shipped: "Mark in transit",
-    in_transit: "Mark delivered",
+    [DELIVERY_STATUS.PENDING]: "Mark accepted",
+    [DELIVERY_STATUS.ACCEPTED]: "Mark in transit",
+    [DELIVERY_STATUS.IN_TRANSIT]: "Mark ready for confirmation",
   };
-  return m[status] || null;
+  return m[s] || null;
 }
 
 const Deliveries = () => {
@@ -100,8 +119,17 @@ const Deliveries = () => {
   const [delayReason, setDelayReason] = useState("");
   const [inspectNotes, setInspectNotes] = useState("");
   const [commentNote, setCommentNote] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmTarget, setConfirmTarget] = useState(null);
+  const [location, setLocation] = useState(null);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState("");
+  const [proofImage, setProofImage] = useState(null);
+  const [vendorProofFile, setVendorProofFile] = useState(null);
 
-  const isStaff = user?.role === "admin" || user?.role === "staff";
+  const isProcurementOfficer = user?.role === SESSION_ROLE.PROCUREMENT_OFFICER;
+  const isAdmin = user?.role === "admin";
+  const canOpenAuditMap = isProcurementOfficer || isAdmin;
   const isVendor = user?.role === "vendor";
 
   const loadDeliveries = () =>
@@ -143,7 +171,7 @@ const Deliveries = () => {
       ["Delivery Number", delivery.deliveryNumber || "N/A"],
       ["Order Reference", delivery.orderReference || delivery.purchaseOrderNumber || "N/A"],
       ["Vendor", delivery.vendorName || "N/A"],
-      ["Status", STATUS_LABELS[delivery.status] || delivery.status || "N/A"],
+      ["Status", statusLabel(delivery.status)],
       ["Received By", delivery?.receivedData?.receivedBy || "Procurement"],
       ["Notes", delivery?.receivedData?.notes || "N/A"],
     ];
@@ -171,25 +199,93 @@ const Deliveries = () => {
     doc.save(`${delivery.deliveryNumber || `DEL-${delivery._id}`}-receipt.pdf`);
   };
 
-  const handleReceive = async (deliveryId) => {
+  const openConfirmDelivery = (delivery) => {
+    setConfirmTarget(delivery);
+    setProofImage(null);
+    setLocation(null);
+    setGeoError("");
+    setConfirmOpen(true);
+  };
+
+  const captureLocation = () => {
+    if (!navigator?.geolocation) {
+      setGeoError("Geolocation is not supported by this browser.");
+      return;
+    }
+    setGeoLoading(true);
+    setGeoError("");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocation({
+          latitude: Number(position.coords.latitude),
+          longitude: Number(position.coords.longitude),
+          accuracy: Number(position.coords.accuracy || 0),
+          capturedAt: new Date().toISOString(),
+        });
+        setGeoLoading(false);
+      },
+      (err) => {
+        const msg =
+          err?.code === 1
+            ? "Location permission denied. Please allow location access and try again."
+            : err?.code === 2
+            ? "Unable to determine your location. Check GPS/network and retry."
+            : err?.code === 3
+            ? "Location request timed out. Please retry."
+            : "Failed to capture location.";
+        setGeoError(msg);
+        setGeoLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  };
+
+  const readFileAsDataUrl = (file) =>
+    new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+
+  const submitConfirmDelivery = async () => {
+    if (!confirmTarget?._id) return;
+    if (!location?.latitude || !location?.longitude) {
+      toast.error("Capture delivery location before submitting.");
+      return;
+    }
+    let proofImageDataUrl;
+    if (proofImage) {
+      try {
+        proofImageDataUrl = await readFileAsDataUrl(proofImage);
+      } catch {
+        toast.error("Could not read proof image.");
+        return;
+      }
+    }
+    const body = {
+      latitude: location.latitude,
+      longitude: location.longitude,
+      receivedBy: user?.fullname || user?.name || "Procurement officer",
+      notes: `Geo-tagged confirmation at ${new Date(
+        location.capturedAt
+      ).toLocaleString("en-NP")}`,
+    };
+    if (proofImageDataUrl) body.proofImage = proofImageDataUrl;
     try {
       const result = await dispatch(
-        receiveDelivery({
-          deliveryId,
-          receivedData: {
-            receivedDate: new Date(),
-            receivedBy: user?.fullname || user?.name || "Procurement officer",
-          },
-        })
+        confirmDelivery({ deliveryId: confirmTarget._id, body })
       ).unwrap();
-      toast.success("Receipt confirmed");
+      toast.success("Delivery confirmed with location");
       if (result?.delivery) {
         handleDownloadDeliveryReceiptPdf(result.delivery);
       }
+      setConfirmOpen(false);
+      setConfirmTarget(null);
       refresh();
       setDetail(null);
     } catch (err) {
-      toast.error(err || "Failed to confirm receipt");
+      toast.error(err || "Failed to confirm geo-tagged delivery");
     }
   };
 
@@ -214,7 +310,19 @@ const Deliveries = () => {
 
   const handleAdvanceStatus = async (deliveryId, status) => {
     try {
-      await dispatch(updateDeliveryStatus({ deliveryId, status })).unwrap();
+      let proofImage;
+      if (vendorProofFile) {
+        proofImage = await readFileAsDataUrl(vendorProofFile);
+      }
+      await dispatch(
+        updateDeliveryStatus({
+          deliveryId,
+          status,
+          note: "",
+          proofImage,
+        })
+      ).unwrap();
+      setVendorProofFile(null);
       toast.success("Status updated");
       const result = await loadDeliveries().unwrap();
       if (detail && String(detail._id) === String(deliveryId)) {
@@ -255,11 +363,19 @@ const Deliveries = () => {
     let rejected = 0;
     let delayed = 0;
     for (const d of deliveries) {
-      const s = d.status;
-      if (IN_PROGRESS_STATUSES.has(s)) inProgress += 1;
-      if (s === "delivered") awaitingReceipt += 1;
-      if (CLOSED_STATUSES.has(s)) closed += 1;
-      if (s === "rejected") rejected += 1;
+      const s = normalizeDeliveryStatus(d.status);
+      if (
+        [
+          DELIVERY_STATUS.PENDING,
+          DELIVERY_STATUS.ACCEPTED,
+          DELIVERY_STATUS.IN_TRANSIT,
+        ].includes(s)
+      )
+        inProgress += 1;
+      if (s === DELIVERY_STATUS.READY_FOR_CONFIRMATION) awaitingReceipt += 1;
+      if ([DELIVERY_STATUS.VERIFIED, DELIVERY_STATUS.INSPECTED].includes(s))
+        closed += 1;
+      if (s === DELIVERY_STATUS.REJECTED) rejected += 1;
       if (hasRecordedDelay(d)) delayed += 1;
     }
     return {
@@ -282,19 +398,23 @@ const Deliveries = () => {
       const matchesSearch =
         !q || ref.includes(q) || num.includes(q) || vendor.includes(q);
       if (!matchesSearch) return false;
-      const s = delivery.status;
+      const s = normalizeDeliveryStatus(delivery.status);
       if (lifecycleFilter === "all") return true;
       if (lifecycleFilter === "in_progress") {
-        return IN_PROGRESS_STATUSES.has(s);
+        return [
+          DELIVERY_STATUS.PENDING,
+          DELIVERY_STATUS.ACCEPTED,
+          DELIVERY_STATUS.IN_TRANSIT,
+        ].includes(s);
       }
       if (lifecycleFilter === "awaiting_receipt") {
-        return s === "delivered";
+        return s === DELIVERY_STATUS.READY_FOR_CONFIRMATION;
       }
       if (lifecycleFilter === "closed") {
-        return CLOSED_STATUSES.has(s);
+        return [DELIVERY_STATUS.VERIFIED, DELIVERY_STATUS.INSPECTED].includes(s);
       }
       if (lifecycleFilter === "rejected") {
-        return s === "rejected";
+        return s === DELIVERY_STATUS.REJECTED;
       }
       if (lifecycleFilter === "delayed") {
         return hasRecordedDelay(delivery);
@@ -304,19 +424,20 @@ const Deliveries = () => {
   }, [deliveries, searchTerm, lifecycleFilter]);
 
   const getStatusBadge = (status) => {
+    const s = normalizeDeliveryStatus(status);
     const map = {
-      pending: "statusWarning",
-      shipped: "statusNeutral",
-      in_transit: "statusInfo",
-      delivered: "statusInfo",
-      received: "statusSuccess",
-      inspected: "statusMuted",
-      rejected: "statusDanger",
+      [DELIVERY_STATUS.PENDING]: "statusWarning",
+      [DELIVERY_STATUS.ACCEPTED]: "statusNeutral",
+      [DELIVERY_STATUS.IN_TRANSIT]: "statusInfo",
+      [DELIVERY_STATUS.READY_FOR_CONFIRMATION]: "statusInfo",
+      [DELIVERY_STATUS.VERIFIED]: "statusSuccess",
+      [DELIVERY_STATUS.INSPECTED]: "statusMuted",
+      [DELIVERY_STATUS.REJECTED]: "statusDanger",
     };
-    const v = map[status] || "statusWarning";
+    const v = map[s] || "statusWarning";
     return (
       <Badge variant={v} className="whitespace-nowrap">
-        {STATUS_LABELS[status] || status}
+        {STATUS_LABELS[s] || status}
       </Badge>
     );
   };
@@ -383,6 +504,27 @@ const Deliveries = () => {
             className="h-10 border-slate-200/90 pl-10 shadow-sm"
           />
         </div>
+        {canOpenAuditMap ? (
+          <Button asChild variant="outline" className="shrink-0">
+            <Link to="/deliveries/audit">Delivery audit map</Link>
+          </Button>
+        ) : null}
+        {isVendor ? (
+          <div className="flex min-w-0 shrink-0 flex-col gap-1 text-xs text-slate-500">
+            <label className="sr-only" htmlFor="vendor-delivery-proof">
+              Optional proof image for next status update
+            </label>
+            <Input
+              id="vendor-delivery-proof"
+              type="file"
+              accept="image/*"
+              className="h-9 max-w-[220px] text-xs"
+              onChange={(e) =>
+                setVendorProofFile(e.target.files?.[0] || null)
+              }
+            />
+          </div>
+        ) : null}
       </WorkspaceToolbar>
 
       {!loading ? (
@@ -458,8 +600,8 @@ const Deliveries = () => {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-slate-500">
-                    Loading…
+                  <TableCell colSpan={7} className="p-0">
+                    <LoadingState variant="table" />
                   </TableCell>
                 </TableRow>
               ) : deliveries.length === 0 ? (
@@ -524,18 +666,21 @@ const Deliveries = () => {
                             </span>
                           </Button>
                         )}
-                        {isStaff && delivery.status === "delivered" && (
+                        {isProcurementOfficer &&
+                          normalizeDeliveryStatus(delivery.status) ===
+                            DELIVERY_STATUS.READY_FOR_CONFIRMATION && (
                           <Button
                             size="sm"
                             className="shrink-0 bg-teal-700 shadow-none hover:bg-teal-600"
-                            onClick={() => handleReceive(delivery._id)}
+                            onClick={() => openConfirmDelivery(delivery)}
                           >
                             <CheckCircle className="h-4 w-4 sm:mr-1" />
                             <span className="hidden sm:inline">Confirm receipt</span>
                           </Button>
                         )}
-                        {isStaff &&
-                          ["received"].includes(delivery.status) && (
+                        {isProcurementOfficer &&
+                          normalizeDeliveryStatus(delivery.status) ===
+                            DELIVERY_STATUS.VERIFIED && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -548,7 +693,11 @@ const Deliveries = () => {
                             </Button>
                           )}
                         {isVendor &&
-                          !["received", "inspected"].includes(delivery.status) && (
+                          ![
+                            DELIVERY_STATUS.VERIFIED,
+                            DELIVERY_STATUS.INSPECTED,
+                            DELIVERY_STATUS.REJECTED,
+                          ].includes(normalizeDeliveryStatus(delivery.status)) && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -624,7 +773,7 @@ const Deliveries = () => {
                     historySorted(detail).map((entry, idx) => (
                       <li key={idx} className="text-xs border-b border-slate-200 pb-2 last:border-0">
                         <span className="font-semibold">
-                          {STATUS_LABELS[entry.status] || entry.status}
+                          {statusLabel(entry.status)}
                         </span>
                         {entry.note ? ` — ${entry.note}` : ""}
                         <div className="text-slate-500 mt-0.5">
@@ -673,17 +822,20 @@ const Deliveries = () => {
                 </Button>
               )}
 
-              {isStaff && detail.status === "delivered" && (
+              {isProcurementOfficer &&
+                normalizeDeliveryStatus(detail.status) ===
+                  DELIVERY_STATUS.READY_FOR_CONFIRMATION && (
                 <Button
                   className="w-full bg-teal-700"
-                  onClick={() => handleReceive(detail._id)}
+                  onClick={() => openConfirmDelivery(detail)}
                 >
                   Confirm receipt & verification
                 </Button>
               )}
 
-              {isStaff &&
-                detail.status === "received" && (
+              {isProcurementOfficer &&
+                normalizeDeliveryStatus(detail.status) ===
+                  DELIVERY_STATUS.VERIFIED && (
                   <div className="space-y-2">
                     <Label>Inspection notes</Label>
                     <Input
@@ -702,7 +854,11 @@ const Deliveries = () => {
                 )}
 
               {isVendor &&
-                !["received", "inspected"].includes(detail.status) && (
+                ![
+                  DELIVERY_STATUS.VERIFIED,
+                  DELIVERY_STATUS.INSPECTED,
+                  DELIVERY_STATUS.REJECTED,
+                ].includes(normalizeDeliveryStatus(detail.status)) && (
                   <Button
                     variant="outline"
                     className="w-full border-amber-300 text-amber-900"
@@ -717,7 +873,10 @@ const Deliveries = () => {
                   </Button>
                 )}
 
-              {isStaff && ["received", "inspected"].includes(detail.status) && (
+              {(isProcurementOfficer || isAdmin) &&
+                [DELIVERY_STATUS.VERIFIED, DELIVERY_STATUS.INSPECTED].includes(
+                  normalizeDeliveryStatus(detail.status)
+                ) && (
                 <Button
                   variant="outline"
                   className="w-full"
@@ -756,6 +915,114 @@ const Deliveries = () => {
               Cancel
             </Button>
             <Button onClick={submitDelay}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          setConfirmOpen(open);
+          if (!open) {
+            setConfirmTarget(null);
+            setProofImage(null);
+            setLocation(null);
+            setGeoError("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm geo-tagged delivery</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-slate-600">
+              Capture location and optionally upload an image proof before
+              confirming receipt.
+            </p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              {location ? (
+                <div className="space-y-2">
+                  <p>
+                    <span className="font-medium">Latitude:</span>{" "}
+                    {location.latitude.toFixed(6)}
+                  </p>
+                  <p>
+                    <span className="font-medium">Longitude:</span>{" "}
+                    {location.longitude.toFixed(6)}
+                  </p>
+                  <p>
+                    <span className="font-medium">Accuracy:</span>{" "}
+                    {Math.round(location.accuracy)} m
+                  </p>
+                  <a
+                    href={`https://maps.google.com/?q=${location.latitude},${location.longitude}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-teal-700 underline"
+                  >
+                    Open location in map
+                  </a>
+                  <div className="h-44 overflow-hidden rounded-lg border border-slate-200">
+                    <MapContainer
+                      center={[location.latitude, location.longitude]}
+                      zoom={16}
+                      scrollWheelZoom={false}
+                      className="h-full w-full"
+                    >
+                      <TileLayer
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      />
+                      <Marker
+                        position={[location.latitude, location.longitude]}
+                        icon={DEFAULT_MARKER_ICON}
+                      >
+                        <Popup>Delivery confirmation location</Popup>
+                      </Marker>
+                    </MapContainer>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-slate-500">Location not captured yet.</p>
+              )}
+            </div>
+            {geoError ? <p className="text-xs text-red-600">{geoError}</p> : null}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={captureLocation}
+              disabled={geoLoading}
+              className="w-full"
+            >
+              {geoLoading ? "Capturing location..." : "Capture current location"}
+            </Button>
+            <div className="space-y-1">
+              <Label htmlFor="delivery-proof-image">
+                Proof image (optional)
+              </Label>
+              <Input
+                id="delivery-proof-image"
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setProofImage(file);
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-teal-700 hover:bg-teal-600"
+              onClick={submitConfirmDelivery}
+              disabled={!location || loading}
+            >
+              Confirm delivery
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

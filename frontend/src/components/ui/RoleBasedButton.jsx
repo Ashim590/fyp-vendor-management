@@ -22,7 +22,7 @@ import { Loader2 } from "lucide-react";
  *   Delete Item
  * </RoleBasedButton>
  *
- * <RoleBasedButton allowedRoles={["admin", "staff"]} variant="outline">
+ * <RoleBasedButton allowedRoles={["admin", "procurement_officer"]} variant="outline">
  *   Edit Item
  * </RoleBasedButton>
  */
@@ -191,7 +191,7 @@ export const RoleBasedAction = ({ children, allowedRoles }) => {
  * <RoleBasedRender
  *   render={{
  *     admin: <AdminPanel />,
- *     staff: <StaffPanel />,
+ *     procurement_officer: <ProcurementPanel />,
  *     vendor: <VendorPanel />
  *   }}
  *   fallback={<DefaultView />}

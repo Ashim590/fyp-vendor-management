@@ -7,6 +7,7 @@ import {
   setCachedAuthUser,
 } from "../utils/authUserCache";
 import { perfLabel } from "../utils/perfTiming";
+import { isApiPerfLoggingEnabled } from "../config/runtimeFlags";
 import { getJwtSecret } from "../config/secrets";
 
 export interface AuthRequest extends Request {
@@ -61,8 +62,7 @@ export const authenticate = async (
   const perfOn =
     process.env.AUTH_PERF_LOG === "1" ||
     process.env.AUTH_PERF_LOG === "true" ||
-    process.env.API_PERF_LOG === "1" ||
-    process.env.API_PERF_LOG === "true";
+    isApiPerfLoggingEnabled();
   const authPath = (req.originalUrl || req.url || "").split("?")[0];
   const authPerfLabel = perfOn
     ? perfLabel(`AUTH ${req.method} ${authPath}`)
