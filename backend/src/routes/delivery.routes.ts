@@ -26,6 +26,9 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
 });
+const MAX_CONFIRM_ACCURACY_METERS = Number(
+  process.env.DELIVERY_CONFIRM_MAX_ACCURACY_METERS || 50,
+);
 
 function fileToDataUrl(file: Express.Multer.File): string {
   const b64 = file.buffer.toString("base64");
@@ -41,15 +44,16 @@ function mapLeanList(items: Record<string, unknown>[]) {
   return items.map((x) => serializeDeliveryLean(x));
 }
 
-const VENDOR_FORWARD: Record<DeliveryWorkflowStatus, DeliveryWorkflowStatus[]> = {
-  PENDING: [DELIVERY_STATUS.ACCEPTED],
-  ACCEPTED: [DELIVERY_STATUS.IN_TRANSIT],
-  IN_TRANSIT: [DELIVERY_STATUS.READY_FOR_CONFIRMATION],
-  READY_FOR_CONFIRMATION: [],
-  VERIFIED: [],
-  INSPECTED: [],
-  REJECTED: [],
-};
+const VENDOR_FORWARD: Record<DeliveryWorkflowStatus, DeliveryWorkflowStatus[]> =
+  {
+    PENDING: [DELIVERY_STATUS.ACCEPTED],
+    ACCEPTED: [DELIVERY_STATUS.IN_TRANSIT],
+    IN_TRANSIT: [DELIVERY_STATUS.READY_FOR_CONFIRMATION],
+    READY_FOR_CONFIRMATION: [],
+    VERIFIED: [],
+    INSPECTED: [],
+    REJECTED: [],
+  };
 
 function vendorOwnsDelivery(
   req: AuthRequest,
@@ -150,7 +154,9 @@ router.get(
       try {
         merged = mergeWithCursorFilter(base, cursor);
       } catch {
-        return res.status(400).json({ success: false, message: "Invalid cursor" });
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid cursor" });
       }
       const raw = await Delivery.find(merged)
         .sort({ createdAt: -1, _id: -1 })
@@ -193,7 +199,9 @@ router.get(
       try {
         merged = mergeWithCursorFilter(base, cursor);
       } catch {
-        return res.status(400).json({ success: false, message: "Invalid cursor" });
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid cursor" });
       }
       const raw = await Delivery.find(merged)
         .sort({ createdAt: -1, _id: -1 })
@@ -275,11 +283,15 @@ router.patch(
     }
 
     if (req.user!.role === "VENDOR" && next === DELIVERY_STATUS.REJECTED) {
-      return res.status(403).json({ message: "Vendors cannot reject via this endpoint" });
+      return res
+        .status(403)
+        .json({ message: "Vendors cannot reject via this endpoint" });
     }
 
     if (next === DELIVERY_STATUS.INSPECTED && req.user!.role === "VENDOR") {
-      return res.status(403).json({ message: "Only staff can record inspection" });
+      return res
+        .status(403)
+        .json({ message: "Only staff can record inspection" });
     }
 
     applyOptionalVendorProofFromBody(delivery, proofImage);
@@ -336,6 +348,8 @@ async function runGeoConfirm(
   opts: {
     lat: number;
     lng: number;
+    accuracyMeters?: number;
+    capturedAt?: Date;
     notes?: string;
     receivedBy?: string;
     proofDataUrl?: string;
@@ -348,7 +362,15 @@ async function runGeoConfirm(
     });
   }
 
-  const { lat, lng, notes, receivedBy, proofDataUrl } = opts;
+  const {
+    lat,
+    lng,
+    accuracyMeters,
+    capturedAt,
+    notes,
+    receivedBy,
+    proofDataUrl,
+  } = opts;
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     return res
       .status(400)
@@ -358,6 +380,16 @@ async function runGeoConfirm(
     return res
       .status(400)
       .json({ message: "Latitude/longitude out of valid range" });
+  }
+  if (
+    Number.isFinite(accuracyMeters) &&
+    Number(accuracyMeters) > MAX_CONFIRM_ACCURACY_METERS
+  ) {
+    return res.status(400).json({
+      message: `Location accuracy is too low (${Math.round(
+        Number(accuracyMeters),
+      )} m). Move to an open area and retry (required: <= ${MAX_CONFIRM_ACCURACY_METERS} m).`,
+    });
   }
 
   delivery.deliveryLocation = {
@@ -369,11 +401,23 @@ async function runGeoConfirm(
   }
 
   const confirmedAt = new Date();
+  const forwardedFor = String(req.headers["x-forwarded-for"] || "");
+  const proxyIp = forwardedFor.split(",")[0]?.trim();
+  const confirmedFromIp = proxyIp || req.ip || "";
   delivery.deliveredAt = confirmedAt;
   delivery.receivedData = {
     receivedDate: confirmedAt,
     receivedBy: receivedBy ?? req.user!.name ?? "Procurement officer",
     notes: notes ?? "",
+    latitude: lat,
+    longitude: lng,
+    ...(Number.isFinite(accuracyMeters)
+      ? { accuracyMeters: Number(accuracyMeters) }
+      : {}),
+    ...(capturedAt instanceof Date && !Number.isNaN(capturedAt.getTime())
+      ? { capturedAt }
+      : {}),
+    ...(confirmedFromIp ? { confirmedFromIp } : {}),
   };
   delivery.actualDate = confirmedAt;
   delivery.status = DELIVERY_STATUS.VERIFIED as DeliveryStatus;
@@ -415,10 +459,19 @@ router.patch(
     if (!delivery)
       return res.status(404).json({ message: "Delivery not found" });
 
-    const { latitude, longitude, notes, receivedBy, proofImage } =
-      req.body || {};
+    const {
+      latitude,
+      longitude,
+      accuracy,
+      capturedAt,
+      notes,
+      receivedBy,
+      proofImage,
+    } = req.body || {};
     const lat = Number(latitude);
     const lng = Number(longitude);
+    const accuracyMeters = Number(accuracy);
+    const capturedAtDate = capturedAt ? new Date(capturedAt) : undefined;
     let proofDataUrl: string | undefined;
     if (
       typeof proofImage === "string" &&
@@ -431,6 +484,8 @@ router.patch(
     return runGeoConfirm(req, res, delivery, {
       lat,
       lng,
+      accuracyMeters,
+      capturedAt: capturedAtDate,
       notes,
       receivedBy,
       proofDataUrl,
@@ -451,15 +506,20 @@ router.post(
     if (!delivery)
       return res.status(404).json({ message: "Delivery not found" });
 
-    const { latitude, longitude, notes, receivedBy } = req.body || {};
+    const { latitude, longitude, accuracy, capturedAt, notes, receivedBy } =
+      req.body || {};
     const lat = Number(latitude);
     const lng = Number(longitude);
+    const accuracyMeters = Number(accuracy);
+    const capturedAtDate = capturedAt ? new Date(capturedAt) : undefined;
     const photoFile = req.file as Express.Multer.File | undefined;
     const proofDataUrl = photoFile ? fileToDataUrl(photoFile) : undefined;
 
     return runGeoConfirm(req, res, delivery, {
       lat,
       lng,
+      accuracyMeters,
+      capturedAt: capturedAtDate,
       notes,
       receivedBy,
       proofDataUrl,
@@ -489,20 +549,17 @@ router.patch(
       DELIVERY_STATUS.REJECTED,
     ]);
     if (noDelay.has(s)) {
-      return res.status(400).json({ message: "Cannot record delay after verification" });
+      return res
+        .status(400)
+        .json({ message: "Cannot record delay after verification" });
     }
     delivery.delayReason = String(reason || "").trim() || "Delay recorded";
     delivery.delayRecordedAt = new Date();
     delivery.delayRecordedBy = req.user!._id;
-    appendHistory(
-      delivery,
-      s,
-      `Delay: ${delivery.delayReason}`,
-      {
-        _id: req.user!._id,
-        name: req.user!.name,
-      },
-    );
+    appendHistory(delivery, s, `Delay: ${delivery.delayReason}`, {
+      _id: req.user!._id,
+      name: req.user!.name,
+    });
     await delivery.save();
 
     const ref = delivery.orderReference || delivery.deliveryNumber;

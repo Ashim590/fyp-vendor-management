@@ -34,10 +34,22 @@ const NotificationsPage = () => {
     markAsRead,
     markAllRead,
   } = useNotificationSummary();
+  const [daysFilter, setDaysFilter] = React.useState("15");
 
   useEffect(() => {
     refresh({ silent: true });
   }, [refresh]);
+
+  const filteredNotifications = React.useMemo(() => {
+    if (daysFilter === "all") return notifications;
+    const days = Number(daysFilter);
+    if (!Number.isFinite(days) || days <= 0) return notifications;
+    const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000;
+    return notifications.filter((n) => {
+      const ts = new Date(n?.createdAt || "").getTime();
+      return Number.isFinite(ts) && ts >= cutoffMs;
+    });
+  }, [notifications, daysFilter]);
 
   return (
     <WorkspacePageLayout className="max-w-3xl pb-10">
@@ -50,9 +62,6 @@ const NotificationsPage = () => {
             <h1 className="text-2xl font-bold tracking-tight text-[#0b1f4d]">
               Notifications
             </h1>
-            <p className="mt-1 max-w-xl text-sm text-slate-600">
-              Procurement activity alerts stay in your list for traceability — only read status changes.
-            </p>
             {unreadCount > 0 ? (
               <p className="mt-1 text-sm text-slate-600">
                 <span className="font-semibold text-slate-800">
@@ -63,29 +72,58 @@ const NotificationsPage = () => {
           </div>
         </div>
         {unreadCount > 0 ? (
-          <button
-            type="button"
-            onClick={markAllRead}
-            className="shrink-0 self-start text-sm font-semibold text-[#0b1f4d] hover:underline"
-          >
-            Mark all read
-          </button>
-        ) : null}
+          <div className="flex items-center gap-2 self-start">
+            <select
+              value={daysFilter}
+              onChange={(e) => setDaysFilter(e.target.value)}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700"
+              aria-label="Filter notifications by date range"
+            >
+              <option value="7">Last 7 days</option>
+              <option value="15">Last 15 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="90">Last 90 days</option>
+              <option value="all">All time</option>
+            </select>
+            <button
+              type="button"
+              onClick={markAllRead}
+              className="shrink-0 text-sm font-semibold text-[#0b1f4d] hover:underline"
+            >
+              Mark all read
+            </button>
+          </div>
+        ) : (
+          <div className="self-start">
+            <select
+              value={daysFilter}
+              onChange={(e) => setDaysFilter(e.target.value)}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700"
+              aria-label="Filter notifications by date range"
+            >
+              <option value="7">Last 7 days</option>
+              <option value="15">Last 15 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="90">Last 90 days</option>
+              <option value="all">All time</option>
+            </select>
+          </div>
+        )}
       </div>
 
       <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm sm:p-5">
         {loading ? (
           <LoadingState variant="page" className="py-8 sm:py-10" />
-        ) : notifications.length === 0 ? (
+        ) : filteredNotifications.length === 0 ? (
           <EmptyState
             icon={Bell}
-            title="No notifications yet"
-            description="When tenders, approvals, deliveries, or payments need your attention, alerts will appear here and in the bell menu."
+            title="No notifications in this range"
+            description="Try a wider date range to view older alerts."
             action={{ label: "Go to dashboard", to: "/" }}
           />
         ) : (
           <ul className="space-y-2">
-            {notifications.map((n) => (
+            {filteredNotifications.map((n) => (
               <NotificationListRow
                 key={n._id}
                 n={n}

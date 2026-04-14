@@ -76,6 +76,7 @@ const AdminBidsMonitor = () => {
   const [error, setError] = useState("");
   const [seenBidIds, setSeenBidIds] = useState(() => new Set());
   const [fadingOutBidId, setFadingOutBidId] = useState(null);
+  const [selectedBidIds, setSelectedBidIds] = useState(() => new Set());
 
   useEffect(() => {
     setSeenBidIds(loadSeenBidIds(seenStorageKey));
@@ -166,6 +167,17 @@ const AdminBidsMonitor = () => {
     load();
   }, [load]);
 
+  useEffect(() => {
+    const available = new Set((bids || []).map((b) => String(b._id)));
+    setSelectedBidIds((prev) => {
+      const next = new Set();
+      prev.forEach((id) => {
+        if (available.has(id)) next.add(id);
+      });
+      return next;
+    });
+  }, [bids]);
+
   const handleDeleteBid = (bidId) => {
     if (
       !confirm(
@@ -188,6 +200,56 @@ const AdminBidsMonitor = () => {
       );
   };
 
+  const toggleSelectBid = (bidId, checked) => {
+    const id = String(bidId);
+    setSelectedBidIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const allSelected = bids.length > 0 && selectedBidIds.size === bids.length;
+
+  const toggleSelectAll = (checked) => {
+    if (!checked) {
+      setSelectedBidIds(new Set());
+      return;
+    }
+    setSelectedBidIds(new Set((bids || []).map((b) => String(b._id))));
+  };
+
+  const handleDeleteSelectedBids = async () => {
+    if (selectedBidIds.size === 0) return;
+    if (
+      !confirm(
+        `Delete ${selectedBidIds.size} selected bid(s) permanently? This action cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    const ids = [...selectedBidIds];
+    const results = await Promise.allSettled(
+      ids.map((id) =>
+        axios.delete(`${BID_API_END_POINT}/${id}`, {
+          withCredentials: true,
+          headers: getAuthHeaderFromStorage(),
+        }),
+      ),
+    );
+    const successCount = results.filter((r) => r.status === "fulfilled").length;
+    const failCount = results.length - successCount;
+    if (successCount > 0) {
+      toast.success(`${successCount} bid(s) deleted.`);
+    }
+    if (failCount > 0) {
+      toast.error(`${failCount} bid(s) could not be deleted.`);
+    }
+    await load();
+    setSelectedBidIds(new Set());
+  };
+
   return (
     <WorkspacePageLayout>
       <WorkspacePageHeader title="Bids monitor" />
@@ -197,20 +259,45 @@ const AdminBidsMonitor = () => {
           {error}
         </div>
       ) : null}
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p className="text-xs text-slate-500">
+          {selectedBidIds.size > 0
+            ? `${selectedBidIds.size} selected`
+            : "Select bids to delete in bulk"}
+        </p>
+        <Button
+          variant="outline"
+          className="border-rose-200 text-rose-800 hover:bg-rose-50"
+          disabled={selectedBidIds.size === 0}
+          onClick={handleDeleteSelectedBids}
+        >
+          <Trash2 className="mr-2 h-4 w-4" />
+          Delete selected
+        </Button>
+      </div>
 
       <Table
         className={cn(WORKSPACE_DATA_TABLE_CLASS, "table-fixed")}
       >
         <colgroup>
+          <col className="w-[6%]" />
           <col className="w-[24%]" />
           <col className="w-[18%]" />
           <col className="w-[14%]" />
           <col className="w-[12%]" />
           <col className="w-[12%]" />
-          <col className="w-[20%]" />
+          <col className="w-[14%]" />
         </colgroup>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
+            <TableHead className="text-left">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={(e) => toggleSelectAll(e.target.checked)}
+                aria-label="Select all bids"
+              />
+            </TableHead>
             <TableHead className="text-left">Tender</TableHead>
             <TableHead className="text-left">Vendor</TableHead>
             <TableHead className="text-left">Total (incl. VAT)</TableHead>
@@ -222,13 +309,13 @@ const AdminBidsMonitor = () => {
         <TableBody>
           {loading ? (
             <TableRow>
-              <TableCell colSpan={6} className="p-0">
+              <TableCell colSpan={7} className="p-0">
                 <LoadingState variant="table" label="Loading bids…" />
               </TableCell>
             </TableRow>
           ) : bids.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6} className="py-10 text-center text-slate-500">
+              <TableCell colSpan={7} className="py-10 text-center text-slate-500">
                 No bids found.
               </TableCell>
             </TableRow>
@@ -249,6 +336,14 @@ const AdminBidsMonitor = () => {
                     "bg-sky-50/95 ring-1 ring-inset ring-sky-200/90",
                 )}
               >
+                <TableCell className="min-w-0">
+                  <input
+                    type="checkbox"
+                    checked={selectedBidIds.has(bidKey)}
+                    onChange={(e) => toggleSelectBid(b._id, e.target.checked)}
+                    aria-label={`Select bid ${b.deliveryNumber || b._id}`}
+                  />
+                </TableCell>
                 <TableCell className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     {b.tender?._id ? (

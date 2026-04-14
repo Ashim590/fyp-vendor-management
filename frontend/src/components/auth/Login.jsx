@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
-import { RadioGroup } from "../ui/radio-group";
 import { Button } from "../ui/button";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -11,18 +10,13 @@ import { useDispatch, useSelector } from "react-redux";
 import { setLoading, setUser, setToken } from "@/redux/authSlice";
 import { persistor } from "@/redux/store";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
-import {
-  SESSION_ROLE,
-  mapApiRoleToSession,
-  getRoleLabel,
-} from "@/constants/userRoles";
+import { SESSION_ROLE, mapApiRoleToSession } from "@/constants/userRoles";
 import { getApiErrorMessage } from "@/utils/apiError";
 
 const Login = () => {
   const [input, setInput] = useState({
     email: "",
     password: "",
-    role: "",
   });
   const [showPassword, setShowPassword] = useState(false);
   const { loading, user } = useSelector((store) => store.auth);
@@ -36,10 +30,6 @@ const Login = () => {
   const submitHandler = async (e) => {
     e.preventDefault();
     try {
-      if (!input.role) {
-        toast.error("Please select how you want to login (role).");
-        return;
-      }
       dispatch(setLoading(true));
       const res = await axios.post(`${AUTH_API_END_POINT}/login`, {
         email: input.email,
@@ -53,15 +43,6 @@ const Login = () => {
         ...rawUser,
         role: mappedRole,
       };
-
-      const requestedRole = String(input.role || "").toLowerCase();
-      if (requestedRole && requestedRole !== normalizedUser.role) {
-        toast.error(
-          `This account is registered as “${getRoleLabel(normalizedUser.role)}”. Please select that role to sign in.`,
-        );
-        dispatch(setLoading(false));
-        return;
-      }
 
       dispatch(setUser(normalizedUser));
       dispatch(setToken(res.data.token));
@@ -125,7 +106,6 @@ const Login = () => {
                   value={input.email}
                   name="email"
                   onChange={changeEventHandler}
-                  placeholder="you@example.org"
                   className="mt-1 text-sm"
                 />
               </div>
@@ -153,48 +133,6 @@ const Login = () => {
                     )}
                   </button>
                 </div>
-              </div>
-              <div>
-                <Label className="text-xs block mb-1">Sign in as</Label>
-                <p className="mb-2 text-[11px] leading-snug text-slate-500">
-                  Choose the type that matches your account. The system has three
-                  roles: administrator, procurement officer, and vendor.
-                </p>
-                <RadioGroup className="flex flex-col gap-1 text-xs sm:flex-row sm:flex-wrap sm:gap-4">
-                  <label className="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-lg px-1 py-1 sm:min-h-0 sm:px-0">
-                    <Input
-                      type="radio"
-                      name="role"
-                      value={SESSION_ROLE.ADMIN}
-                      checked={input.role === SESSION_ROLE.ADMIN}
-                      onChange={changeEventHandler}
-                      className="cursor-pointer h-3 w-3"
-                    />
-                    <span>{getRoleLabel(SESSION_ROLE.ADMIN)}</span>
-                  </label>
-                  <label className="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-lg px-1 py-1 sm:min-h-0 sm:px-0">
-                    <Input
-                      type="radio"
-                      name="role"
-                      value={SESSION_ROLE.PROCUREMENT_OFFICER}
-                      checked={input.role === SESSION_ROLE.PROCUREMENT_OFFICER}
-                      onChange={changeEventHandler}
-                      className="cursor-pointer h-3 w-3"
-                    />
-                    <span>{getRoleLabel(SESSION_ROLE.PROCUREMENT_OFFICER)}</span>
-                  </label>
-                  <label className="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-lg px-1 py-1 sm:min-h-0 sm:px-0">
-                    <Input
-                      type="radio"
-                      name="role"
-                      value={SESSION_ROLE.VENDOR}
-                      checked={input.role === SESSION_ROLE.VENDOR}
-                      onChange={changeEventHandler}
-                      className="cursor-pointer h-3 w-3"
-                    />
-                    <span>{getRoleLabel(SESSION_ROLE.VENDOR)}</span>
-                  </label>
-                </RadioGroup>
               </div>
               {loading ? (
                 <Button className="w-full mt-3 h-10">

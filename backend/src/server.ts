@@ -13,6 +13,7 @@ import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
+import swaggerUi from 'swagger-ui-express';
 
 import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
@@ -36,6 +37,7 @@ import paymentRoutes from './routes/payment.routes';
 import invoicePaymentRoutes from './routes/invoicePayment.routes';
 import vendorReviewRoutes from './routes/vendorReview.routes';
 import { apiPerfLogMiddleware } from './middleware/apiPerfLog';
+import { swaggerSpec } from './docs/swagger';
 
 dotenv.config();
 
@@ -208,6 +210,11 @@ app.get('/api/health', (_req, res) => {
     time: new Date().toISOString(),
   });
 });
+
+app.get('/api-docs.json', (_req, res) => {
+  res.json(swaggerSpec);
+});
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 /** Friendly root when API-only (e.g. Render); skip if CLIENT_DIST_PATH serves the SPA. */
 if (!process.env.CLIENT_DIST_PATH?.trim()) {

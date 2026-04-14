@@ -42,12 +42,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
-import {
-  MapContainer,
-  Marker,
-  Popup,
-  TileLayer,
-} from "react-leaflet";
+import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
@@ -78,6 +73,7 @@ const DEFAULT_MARKER_ICON = L.icon({
   popupAnchor: [1, -34],
   shadowSize: [41, 41],
 });
+const MAX_CONFIRM_ACCURACY_METERS = 50;
 
 function hasRecordedDelay(d) {
   return Boolean(
@@ -89,7 +85,8 @@ function nextVendorStatus(status) {
   const s = normalizeDeliveryStatus(status);
   if (s === DELIVERY_STATUS.PENDING) return DELIVERY_STATUS.ACCEPTED;
   if (s === DELIVERY_STATUS.ACCEPTED) return DELIVERY_STATUS.IN_TRANSIT;
-  if (s === DELIVERY_STATUS.IN_TRANSIT) return DELIVERY_STATUS.READY_FOR_CONFIRMATION;
+  if (s === DELIVERY_STATUS.IN_TRANSIT)
+    return DELIVERY_STATUS.READY_FOR_CONFIRMATION;
   return null;
 }
 
@@ -165,11 +162,16 @@ const Deliveries = () => {
     if (!delivery) return;
     const doc = new jsPDF();
     const receiptDate =
-      delivery?.receivedData?.receivedDate || delivery?.actualDate || new Date();
+      delivery?.receivedData?.receivedDate ||
+      delivery?.actualDate ||
+      new Date();
     const details = [
       ["Receipt Date", formatDateTime(receiptDate)],
       ["Delivery Number", delivery.deliveryNumber || "N/A"],
-      ["Order Reference", delivery.orderReference || delivery.purchaseOrderNumber || "N/A"],
+      [
+        "Order Reference",
+        delivery.orderReference || delivery.purchaseOrderNumber || "N/A",
+      ],
       ["Vendor", delivery.vendorName || "N/A"],
       ["Status", statusLabel(delivery.status)],
       ["Received By", delivery?.receivedData?.receivedBy || "Procurement"],
@@ -229,14 +231,14 @@ const Deliveries = () => {
           err?.code === 1
             ? "Location permission denied. Please allow location access and try again."
             : err?.code === 2
-            ? "Unable to determine your location. Check GPS/network and retry."
-            : err?.code === 3
-            ? "Location request timed out. Please retry."
-            : "Failed to capture location.";
+              ? "Unable to determine your location. Check GPS/network and retry."
+              : err?.code === 3
+                ? "Location request timed out. Please retry."
+                : "Failed to capture location.";
         setGeoError(msg);
         setGeoLoading(false);
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     );
   };
 
@@ -254,6 +256,17 @@ const Deliveries = () => {
       toast.error("Capture delivery location before submitting.");
       return;
     }
+    if (
+      Number.isFinite(location?.accuracy) &&
+      Number(location.accuracy) > MAX_CONFIRM_ACCURACY_METERS
+    ) {
+      toast.error(
+        `Location accuracy is too low (${Math.round(
+          Number(location.accuracy),
+        )} m). Move to an open area and capture again.`,
+      );
+      return;
+    }
     let proofImageDataUrl;
     if (proofImage) {
       try {
@@ -266,15 +279,17 @@ const Deliveries = () => {
     const body = {
       latitude: location.latitude,
       longitude: location.longitude,
+      accuracy: location.accuracy,
+      capturedAt: location.capturedAt,
       receivedBy: user?.fullname || user?.name || "Procurement officer",
       notes: `Geo-tagged confirmation at ${new Date(
-        location.capturedAt
+        location.capturedAt,
       ).toLocaleString("en-NP")}`,
     };
     if (proofImageDataUrl) body.proofImage = proofImageDataUrl;
     try {
       const result = await dispatch(
-        confirmDelivery({ deliveryId: confirmTarget._id, body })
+        confirmDelivery({ deliveryId: confirmTarget._id, body }),
       ).unwrap();
       toast.success("Delivery confirmed with location");
       if (result?.delivery) {
@@ -297,7 +312,7 @@ const Deliveries = () => {
         inspectDelivery({
           deliveryId,
           inspectionData: { status: "inspected", notes },
-        })
+        }),
       ).unwrap();
       toast.success("Inspection recorded");
       setInspectNotes("");
@@ -320,13 +335,15 @@ const Deliveries = () => {
           status,
           note: "",
           proofImage,
-        })
+        }),
       ).unwrap();
       setVendorProofFile(null);
       toast.success("Status updated");
       const result = await loadDeliveries().unwrap();
       if (detail && String(detail._id) === String(deliveryId)) {
-        const u = result?.deliveries?.find((d) => String(d._id) === String(deliveryId));
+        const u = result?.deliveries?.find(
+          (d) => String(d._id) === String(deliveryId),
+        );
         if (u) setDetail(u);
       }
     } catch (err) {
@@ -344,7 +361,7 @@ const Deliveries = () => {
         recordDeliveryDelay({
           deliveryId: delayTarget._id,
           reason: delayReason.trim(),
-        })
+        }),
       ).unwrap();
       toast.success("Delay recorded");
       setDelayOpen(false);
@@ -390,8 +407,11 @@ const Deliveries = () => {
 
   const filteredDeliveries = useMemo(() => {
     return deliveries.filter((delivery) => {
-      const ref = (delivery.orderReference || delivery.purchaseOrderNumber || "")
-        .toLowerCase();
+      const ref = (
+        delivery.orderReference ||
+        delivery.purchaseOrderNumber ||
+        ""
+      ).toLowerCase();
       const num = (delivery.deliveryNumber || "").toLowerCase();
       const vendor = (delivery.vendorName || "").toLowerCase();
       const q = searchTerm.toLowerCase();
@@ -411,7 +431,9 @@ const Deliveries = () => {
         return s === DELIVERY_STATUS.READY_FOR_CONFIRMATION;
       }
       if (lifecycleFilter === "closed") {
-        return [DELIVERY_STATUS.VERIFIED, DELIVERY_STATUS.INSPECTED].includes(s);
+        return [DELIVERY_STATUS.VERIFIED, DELIVERY_STATUS.INSPECTED].includes(
+          s,
+        );
       }
       if (lifecycleFilter === "rejected") {
         return s === DELIVERY_STATUS.REJECTED;
@@ -481,7 +503,7 @@ const Deliveries = () => {
       const result = await loadDeliveries().unwrap();
       if (detail && String(detail._id) === String(deliveryId)) {
         const updated = result?.deliveries?.find(
-          (d) => String(d._id) === String(deliveryId)
+          (d) => String(d._id) === String(deliveryId),
         );
         if (updated) setDetail(updated);
       }
@@ -519,9 +541,7 @@ const Deliveries = () => {
               type="file"
               accept="image/*"
               className="h-9 max-w-[220px] text-xs"
-              onChange={(e) =>
-                setVendorProofFile(e.target.files?.[0] || null)
-              }
+              onChange={(e) => setVendorProofFile(e.target.files?.[0] || null)}
             />
           </div>
         ) : null}
@@ -577,148 +597,160 @@ const Deliveries = () => {
       ) : null}
 
       <Table className={cn(WORKSPACE_DATA_TABLE_CLASS, "table-fixed")}>
-            <colgroup>
-              <col className="w-[10%]" />
-              <col className="w-[10%]" />
-              <col className="w-[20%]" />
-              <col className="w-[11%]" />
-              <col className="w-[11%]" />
-              <col className="w-[13%]" />
-              <col className="min-w-[200px] w-[25%]" />
-            </colgroup>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="text-left">Delivery #</TableHead>
-                <TableHead className="text-left">Order ref</TableHead>
-                <TableHead className="text-left">Vendor</TableHead>
-                <TableHead className="text-left">Expected</TableHead>
-                <TableHead className="text-left">Actual / received</TableHead>
-                <TableHead className="text-left">Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="p-0">
-                    <LoadingState variant="table" />
-                  </TableCell>
-                </TableRow>
-              ) : deliveries.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-slate-500">
-                    No deliveries yet. Records appear after a tender or invoice payment
-                    completes.
-                  </TableCell>
-                </TableRow>
-              ) : filteredDeliveries.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-slate-500">
-                    No matching deliveries for this filter or search.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredDeliveries.map((delivery) => (
-                  <TableRow key={delivery._id}>
-                    <TableCell className="min-w-0 truncate font-medium tabular-nums">
-                      {delivery.deliveryNumber}
-                    </TableCell>
-                    <TableCell className="min-w-0 truncate whitespace-nowrap">
-                      {delivery.orderReference || delivery.purchaseOrderNumber || "—"}
-                    </TableCell>
-                    <TableCell className="min-w-0">
-                      <span className="line-clamp-2 break-words">{delivery.vendorName}</span>
-                    </TableCell>
-                    <TableCell className="min-w-0 whitespace-nowrap">
-                      {formatDate(delivery.expectedDate)}
-                    </TableCell>
-                    <TableCell className="min-w-0 whitespace-nowrap">
-                      {delivery.actualDate
-                        ? formatDate(delivery.actualDate)
-                        : "—"}
-                    </TableCell>
-                    <TableCell className="min-w-0">{getStatusBadge(delivery.status)}</TableCell>
-                    <TableCell className="min-w-0 text-right align-top">
-                      <div className="flex flex-col items-end gap-2 md:flex-row md:flex-wrap md:justify-end">
+        <colgroup>
+          <col className="w-[10%]" />
+          <col className="w-[10%]" />
+          <col className="w-[20%]" />
+          <col className="w-[11%]" />
+          <col className="w-[11%]" />
+          <col className="w-[13%]" />
+          <col className="min-w-[200px] w-[25%]" />
+        </colgroup>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="text-left">Delivery #</TableHead>
+            <TableHead className="text-left">Order ref</TableHead>
+            <TableHead className="text-left">Vendor</TableHead>
+            <TableHead className="text-left">Expected</TableHead>
+            <TableHead className="text-left">Actual / received</TableHead>
+            <TableHead className="text-left">Status</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {loading ? (
+            <TableRow>
+              <TableCell colSpan={7} className="p-0">
+                <LoadingState variant="table" />
+              </TableCell>
+            </TableRow>
+          ) : deliveries.length === 0 ? (
+            <TableRow>
+              <TableCell
+                colSpan={7}
+                className="text-center py-8 text-slate-500"
+              >
+                No deliveries yet. Records appear after a tender or invoice
+                payment completes.
+              </TableCell>
+            </TableRow>
+          ) : filteredDeliveries.length === 0 ? (
+            <TableRow>
+              <TableCell
+                colSpan={7}
+                className="text-center py-8 text-slate-500"
+              >
+                No matching deliveries for this filter or search.
+              </TableCell>
+            </TableRow>
+          ) : (
+            filteredDeliveries.map((delivery) => (
+              <TableRow key={delivery._id}>
+                <TableCell className="min-w-0 truncate font-medium tabular-nums">
+                  {delivery.deliveryNumber}
+                </TableCell>
+                <TableCell className="min-w-0 truncate whitespace-nowrap">
+                  {delivery.orderReference ||
+                    delivery.purchaseOrderNumber ||
+                    "—"}
+                </TableCell>
+                <TableCell className="min-w-0">
+                  <span className="line-clamp-2 break-words">
+                    {delivery.vendorName}
+                  </span>
+                </TableCell>
+                <TableCell className="min-w-0 whitespace-nowrap">
+                  {formatDate(delivery.expectedDate)}
+                </TableCell>
+                <TableCell className="min-w-0 whitespace-nowrap">
+                  {delivery.actualDate ? formatDate(delivery.actualDate) : "—"}
+                </TableCell>
+                <TableCell className="min-w-0">
+                  {getStatusBadge(delivery.status)}
+                </TableCell>
+                <TableCell className="min-w-0 text-right align-top">
+                  <div className="flex flex-col items-end gap-2 md:flex-row md:flex-wrap md:justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() => openDetail(delivery)}
+                    >
+                      <Eye className="h-4 w-4 sm:mr-1" />
+                      <span className="hidden sm:inline">Details</span>
+                    </Button>
+                    {isVendor && nextVendorStatus(delivery.status) && (
+                      <Button
+                        size="sm"
+                        className="shrink-0 bg-slate-900"
+                        onClick={() =>
+                          handleAdvanceStatus(
+                            delivery._id,
+                            nextVendorStatus(delivery.status),
+                          )
+                        }
+                      >
+                        <Truck className="h-4 w-4 sm:mr-1" />
+                        <span className="hidden sm:inline">
+                          {nextVendorLabel(delivery.status)}
+                        </span>
+                      </Button>
+                    )}
+                    {isProcurementOfficer &&
+                      normalizeDeliveryStatus(delivery.status) ===
+                        DELIVERY_STATUS.READY_FOR_CONFIRMATION && (
+                        <Button
+                          size="sm"
+                          className="shrink-0 bg-teal-700 shadow-none hover:bg-teal-600"
+                          onClick={() => openConfirmDelivery(delivery)}
+                        >
+                          <CheckCircle className="h-4 w-4 sm:mr-1" />
+                          <span className="hidden sm:inline">
+                            Confirm receipt
+                          </span>
+                        </Button>
+                      )}
+                    {isProcurementOfficer &&
+                      normalizeDeliveryStatus(delivery.status) ===
+                        DELIVERY_STATUS.VERIFIED && (
                         <Button
                           variant="outline"
                           size="sm"
                           className="shrink-0"
-                          onClick={() => openDetail(delivery)}
+                          onClick={() => {
+                            openDetail(delivery);
+                          }}
                         >
-                          <Eye className="h-4 w-4 sm:mr-1" />
-                          <span className="hidden sm:inline">Details</span>
+                          Inspect
                         </Button>
-                        {isVendor && nextVendorStatus(delivery.status) && (
-                          <Button
-                            size="sm"
-                            className="shrink-0 bg-slate-900"
-                            onClick={() =>
-                              handleAdvanceStatus(
-                                delivery._id,
-                                nextVendorStatus(delivery.status)
-                              )
-                            }
-                          >
-                            <Truck className="h-4 w-4 sm:mr-1" />
-                            <span className="hidden sm:inline">
-                              {nextVendorLabel(delivery.status)}
-                            </span>
-                          </Button>
-                        )}
-                        {isProcurementOfficer &&
-                          normalizeDeliveryStatus(delivery.status) ===
-                            DELIVERY_STATUS.READY_FOR_CONFIRMATION && (
-                          <Button
-                            size="sm"
-                            className="shrink-0 bg-teal-700 shadow-none hover:bg-teal-600"
-                            onClick={() => openConfirmDelivery(delivery)}
-                          >
-                            <CheckCircle className="h-4 w-4 sm:mr-1" />
-                            <span className="hidden sm:inline">Confirm receipt</span>
-                          </Button>
-                        )}
-                        {isProcurementOfficer &&
-                          normalizeDeliveryStatus(delivery.status) ===
-                            DELIVERY_STATUS.VERIFIED && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="shrink-0"
-                              onClick={() => {
-                                openDetail(delivery);
-                              }}
-                            >
-                              Inspect
-                            </Button>
-                          )}
-                        {isVendor &&
-                          ![
-                            DELIVERY_STATUS.VERIFIED,
-                            DELIVERY_STATUS.INSPECTED,
-                            DELIVERY_STATUS.REJECTED,
-                          ].includes(normalizeDeliveryStatus(delivery.status)) && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="shrink-0 text-amber-800 border-amber-300"
-                              onClick={() => {
-                                setDelayTarget(delivery);
-                                setDelayReason("");
-                                setDelayOpen(true);
-                              }}
-                            >
-                              <AlertTriangle className="h-4 w-4 sm:mr-1" />
-                              <span className="hidden sm:inline">Delay</span>
-                            </Button>
-                          )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                      )}
+                    {isVendor &&
+                      ![
+                        DELIVERY_STATUS.VERIFIED,
+                        DELIVERY_STATUS.INSPECTED,
+                        DELIVERY_STATUS.REJECTED,
+                      ].includes(normalizeDeliveryStatus(delivery.status)) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0 text-amber-800 border-amber-300"
+                          onClick={() => {
+                            setDelayTarget(delivery);
+                            setDelayReason("");
+                            setDelayOpen(true);
+                          }}
+                        >
+                          <AlertTriangle className="h-4 w-4 sm:mr-1" />
+                          <span className="hidden sm:inline">Delay</span>
+                        </Button>
+                      )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
 
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
@@ -736,17 +768,49 @@ const Deliveries = () => {
                 </div>
                 <div>
                   <span className="text-slate-500">Vendor</span>
-                  <p className="font-medium text-slate-900">{detail.vendorName}</p>
+                  <p className="font-medium text-slate-900">
+                    {detail.vendorName}
+                  </p>
                 </div>
                 <div>
                   <span className="text-slate-500">Expected delivery</span>
-                  <p className="font-medium">{formatDate(detail.expectedDate)}</p>
+                  <p className="font-medium">
+                    {formatDate(detail.expectedDate)}
+                  </p>
                 </div>
                 <div>
                   <span className="text-slate-500">Current status</span>
                   <p>{getStatusBadge(detail.status)}</p>
                 </div>
               </div>
+
+              {Array.isArray(detail?.deliveryLocation?.coordinates) ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-950">
+                  <p className="font-medium">Receipt location audit</p>
+                  <p className="mt-1 text-xs">
+                    Lat/Lng:{" "}
+                    {Number(detail.deliveryLocation.coordinates[1]).toFixed(6)},{" "}
+                    {Number(detail.deliveryLocation.coordinates[0]).toFixed(6)}
+                  </p>
+                  {Number.isFinite(detail?.receivedData?.accuracyMeters) ? (
+                    <p className="text-xs">
+                      Accuracy: {Math.round(detail.receivedData.accuracyMeters)}{" "}
+                      m
+                    </p>
+                  ) : null}
+                  {detail?.receivedData?.capturedAt ? (
+                    <p className="text-xs">
+                      Captured at:{" "}
+                      {formatDateTime(detail.receivedData.capturedAt)}
+                    </p>
+                  ) : null}
+                  {detail?.receivedData?.confirmedFromIp ? (
+                    <p className="text-xs">
+                      Confirmed from IP: {detail.receivedData.confirmedFromIp}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
 
               {detail.delayReason ? (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-950">
@@ -771,7 +835,10 @@ const Deliveries = () => {
                     <li className="text-slate-500">No history entries.</li>
                   ) : (
                     historySorted(detail).map((entry, idx) => (
-                      <li key={idx} className="text-xs border-b border-slate-200 pb-2 last:border-0">
+                      <li
+                        key={idx}
+                        className="text-xs border-b border-slate-200 pb-2 last:border-0"
+                      >
                         <span className="font-semibold">
                           {statusLabel(entry.status)}
                         </span>
@@ -807,7 +874,9 @@ const Deliveries = () => {
                   <p className="font-medium text-slate-900 mb-1 flex items-center gap-2">
                     <Package className="h-4 w-4" /> Line items
                   </p>
-                  <p className="text-slate-600">{detail.items.length} item(s)</p>
+                  <p className="text-slate-600">
+                    {detail.items.length} item(s)
+                  </p>
                 </div>
               )}
 
@@ -815,7 +884,10 @@ const Deliveries = () => {
                 <Button
                   className="w-full bg-slate-900"
                   onClick={() =>
-                    handleAdvanceStatus(detail._id, nextVendorStatus(detail.status))
+                    handleAdvanceStatus(
+                      detail._id,
+                      nextVendorStatus(detail.status),
+                    )
                   }
                 >
                   {nextVendorLabel(detail.status)}
@@ -825,13 +897,13 @@ const Deliveries = () => {
               {isProcurementOfficer &&
                 normalizeDeliveryStatus(detail.status) ===
                   DELIVERY_STATUS.READY_FOR_CONFIRMATION && (
-                <Button
-                  className="w-full bg-teal-700"
-                  onClick={() => openConfirmDelivery(detail)}
-                >
-                  Confirm receipt & verification
-                </Button>
-              )}
+                  <Button
+                    className="w-full bg-teal-700"
+                    onClick={() => openConfirmDelivery(detail)}
+                  >
+                    Confirm receipt & verification
+                  </Button>
+                )}
 
               {isProcurementOfficer &&
                 normalizeDeliveryStatus(detail.status) ===
@@ -875,16 +947,16 @@ const Deliveries = () => {
 
               {(isProcurementOfficer || isAdmin) &&
                 [DELIVERY_STATUS.VERIFIED, DELIVERY_STATUS.INSPECTED].includes(
-                  normalizeDeliveryStatus(detail.status)
+                  normalizeDeliveryStatus(detail.status),
                 ) && (
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => handleDownloadDeliveryReceiptPdf(detail)}
-                >
-                  Download receipt
-                </Button>
-              )}
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => handleDownloadDeliveryReceiptPdf(detail)}
+                  >
+                    Download receipt
+                  </Button>
+                )}
             </div>
           )}
           <DialogFooter>
@@ -955,6 +1027,14 @@ const Deliveries = () => {
                     <span className="font-medium">Accuracy:</span>{" "}
                     {Math.round(location.accuracy)} m
                   </p>
+                  {Number.isFinite(location.accuracy) &&
+                  Number(location.accuracy) > MAX_CONFIRM_ACCURACY_METERS ? (
+                    <p className="text-xs text-amber-700">
+                      Accuracy is above recommended threshold (
+                      {MAX_CONFIRM_ACCURACY_METERS} m). Move to open sky and
+                      capture again.
+                    </p>
+                  ) : null}
                   <a
                     href={`https://maps.google.com/?q=${location.latitude},${location.longitude}`}
                     target="_blank"
@@ -987,7 +1067,9 @@ const Deliveries = () => {
                 <p className="text-slate-500">Location not captured yet.</p>
               )}
             </div>
-            {geoError ? <p className="text-xs text-red-600">{geoError}</p> : null}
+            {geoError ? (
+              <p className="text-xs text-red-600">{geoError}</p>
+            ) : null}
             <Button
               type="button"
               variant="outline"
@@ -995,7 +1077,9 @@ const Deliveries = () => {
               disabled={geoLoading}
               className="w-full"
             >
-              {geoLoading ? "Capturing location..." : "Capture current location"}
+              {geoLoading
+                ? "Capturing location..."
+                : "Capture current location"}
             </Button>
             <div className="space-y-1">
               <Label htmlFor="delivery-proof-image">
@@ -1019,7 +1103,12 @@ const Deliveries = () => {
             <Button
               className="bg-teal-700 hover:bg-teal-600"
               onClick={submitConfirmDelivery}
-              disabled={!location || loading}
+              disabled={
+                !location ||
+                loading ||
+                (Number.isFinite(location?.accuracy) &&
+                  Number(location.accuracy) > MAX_CONFIRM_ACCURACY_METERS)
+              }
             >
               Confirm delivery
             </Button>

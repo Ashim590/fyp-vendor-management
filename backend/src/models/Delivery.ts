@@ -69,6 +69,11 @@ export interface IDelivery extends Document {
     receivedDate: Date;
     receivedBy: string;
     notes?: string;
+    latitude?: number;
+    longitude?: number;
+    accuracyMeters?: number;
+    capturedAt?: Date;
+    confirmedFromIp?: string;
   };
 
   inspectionData?: {
@@ -176,6 +181,11 @@ const DeliverySchema: Schema<IDelivery> = new Schema(
       receivedDate: { type: Date, default: Date.now },
       receivedBy: { type: String, default: "Unknown" },
       notes: { type: String, default: "" },
+      latitude: { type: Number },
+      longitude: { type: Number },
+      accuracyMeters: { type: Number },
+      capturedAt: { type: Date },
+      confirmedFromIp: { type: String, default: "" },
     },
     inspectionData: {
       status: { type: String, default: "inspected" },

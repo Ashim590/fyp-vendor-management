@@ -107,6 +107,13 @@ export function useWorkspaceNavIsActive() {
     if (path === "/procurement/payments") {
       return location.pathname.startsWith("/procurement/payments");
     }
+    if (path === "/deliveries") {
+      return (
+        location.pathname === "/deliveries" ||
+        (location.pathname.startsWith("/deliveries/") &&
+          !location.pathname.startsWith("/deliveries/audit"))
+      );
+    }
     return (
       location.pathname === path || location.pathname.startsWith(`${path}/`)
     );
@@ -158,9 +165,7 @@ function SidebarNavLink({
       >
         <Icon className="h-[18px] w-[18px]" strokeWidth={active ? 2.25 : 2} />
       </span>
-      <span
-        className="min-w-0 flex-1 break-words text-[13px] font-medium leading-snug"
-      >
+      <span className="min-w-0 flex-1 break-words text-[13px] font-medium leading-snug">
         {children}
       </span>
       {trailing}
