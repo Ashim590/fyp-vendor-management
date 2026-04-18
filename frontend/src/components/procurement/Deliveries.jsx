@@ -122,12 +122,15 @@ const Deliveries = () => {
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoError, setGeoError] = useState("");
   const [proofImage, setProofImage] = useState(null);
-  const [vendorProofFile, setVendorProofFile] = useState(null);
 
   const isProcurementOfficer = user?.role === SESSION_ROLE.PROCUREMENT_OFFICER;
   const isAdmin = user?.role === "admin";
   const canOpenAuditMap = isProcurementOfficer || isAdmin;
-  const isVendor = user?.role === "vendor";
+  const isVendor = user?.role === SESSION_ROLE.VENDOR;
+
+  /** Vendor-only: light frame (avoid heavy borders that fight the page). */
+  const vendorShellClass =
+    "rounded-xl border border-slate-200/90 bg-white/80 px-3 py-5 shadow-sm sm:px-5 sm:py-6";
 
   const loadDeliveries = () =>
     isVendor
@@ -325,19 +328,13 @@ const Deliveries = () => {
 
   const handleAdvanceStatus = async (deliveryId, status) => {
     try {
-      let proofImage;
-      if (vendorProofFile) {
-        proofImage = await readFileAsDataUrl(vendorProofFile);
-      }
       await dispatch(
         updateDeliveryStatus({
           deliveryId,
           status,
           note: "",
-          proofImage,
         }),
       ).unwrap();
-      setVendorProofFile(null);
       toast.success("Status updated");
       const result = await loadDeliveries().unwrap();
       if (detail && String(detail._id) === String(deliveryId)) {
@@ -512,38 +509,100 @@ const Deliveries = () => {
     }
   };
 
-  return (
-    <WorkspacePageLayout>
-      <WorkspacePageHeader title="Delivery tracking" />
+  const staffTableColSpan = 7;
+  const vendorTableColSpan = 6;
 
-      <WorkspaceToolbar>
+  /** Shared vendor row actions (mobile list + desktop table). */
+  const vendorDeliveryActions = (delivery) => (
+    <div className="flex flex-wrap items-center gap-1.5 md:justify-end">
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-8 border-slate-200 px-2 text-accent hover:bg-slate-50"
+        onClick={() => openDetail(delivery)}
+      >
+        <Eye className="h-3.5 w-3.5 md:mr-1" />
+        <span className="hidden md:inline">Details</span>
+      </Button>
+      {nextVendorStatus(delivery.status) ? (
+        <Button
+          size="sm"
+          className="h-8 bg-primary px-2 text-white hover:bg-[var(--color-primary-hover)]"
+          onClick={() =>
+            handleAdvanceStatus(
+              delivery._id,
+              nextVendorStatus(delivery.status),
+            )
+          }
+        >
+          <Truck className="h-3.5 w-3.5 md:mr-1" />
+          <span className="max-w-[9rem] truncate text-xs md:max-w-none md:text-sm">
+            {nextVendorLabel(delivery.status)}
+          </span>
+        </Button>
+      ) : null}
+      {![
+        DELIVERY_STATUS.VERIFIED,
+        DELIVERY_STATUS.INSPECTED,
+        DELIVERY_STATUS.REJECTED,
+      ].includes(normalizeDeliveryStatus(delivery.status)) ? (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 border-amber-300 px-2 text-amber-900 hover:bg-amber-50"
+          onClick={() => {
+            setDelayTarget(delivery);
+            setDelayReason("");
+            setDelayOpen(true);
+          }}
+        >
+          <AlertTriangle className="h-3.5 w-3.5 md:mr-1" />
+          <span className="hidden md:inline">Delay</span>
+        </Button>
+      ) : null}
+    </div>
+  );
+
+  return (
+    <WorkspacePageLayout className={isVendor ? vendorShellClass : undefined}>
+      <WorkspacePageHeader
+        title={isVendor ? "My deliveries" : "Delivery tracking"}
+        className={isVendor ? "border-slate-200/80 pb-5" : undefined}
+        titleClassName={
+          isVendor ? "break-words text-accent sm:text-[1.65rem]" : undefined
+        }
+      />
+
+      <WorkspaceToolbar
+        className={isVendor ? "border-slate-200/90 bg-white" : undefined}
+      >
         <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search
+            className={cn(
+              "pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2",
+              isVendor ? "text-primary/70" : "text-slate-400",
+            )}
+          />
           <Input
-            placeholder="Search by delivery #, order ref, or vendor…"
+            placeholder={
+              isVendor
+                ? "Search by delivery # or order ref…"
+                : "Search by delivery #, order ref, or vendor…"
+            }
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="h-10 border-slate-200/90 pl-10 shadow-sm"
+            className={cn(
+              "h-10 pl-10 shadow-sm",
+              isVendor
+                ? "border-[var(--color-border)] focus-visible:ring-primary/25"
+                : "border-slate-200/90",
+            )}
           />
         </div>
         {canOpenAuditMap ? (
           <Button asChild variant="outline" className="shrink-0">
             <Link to="/deliveries/audit">Delivery audit map</Link>
           </Button>
-        ) : null}
-        {isVendor ? (
-          <div className="flex min-w-0 shrink-0 flex-col gap-1 text-xs text-slate-500">
-            <label className="sr-only" htmlFor="vendor-delivery-proof">
-              Optional proof image for next status update
-            </label>
-            <Input
-              id="vendor-delivery-proof"
-              type="file"
-              accept="image/*"
-              className="h-9 max-w-[220px] text-xs"
-              onChange={(e) => setVendorProofFile(e.target.files?.[0] || null)}
-            />
-          </div>
         ) : null}
       </WorkspaceToolbar>
 
@@ -578,11 +637,21 @@ const Deliveries = () => {
             className="w-full max-w-5xl flex-wrap"
           />
           {deliveries.length > 0 && filteredDeliveries.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-8 text-center text-sm font-medium text-slate-600">
+            <p
+              className={cn(
+                "rounded-xl border border-dashed px-4 py-8 text-center text-sm font-medium",
+                isVendor
+                  ? "border-[var(--color-border)] bg-primary/[0.04] text-slate-700"
+                  : "border-slate-200 bg-slate-50/60 text-slate-600",
+              )}
+            >
               No deliveries match this filter or search. Try{" "}
               <button
                 type="button"
-                className="font-semibold text-teal-800 underline-offset-2 hover:underline"
+                className={cn(
+                  "font-semibold underline-offset-2 hover:underline",
+                  isVendor ? "text-accent" : "text-teal-800",
+                )}
                 onClick={() => {
                   setLifecycleFilter("all");
                   setSearchTerm("");
@@ -596,161 +665,307 @@ const Deliveries = () => {
         </div>
       ) : null}
 
-      <Table className={cn(WORKSPACE_DATA_TABLE_CLASS, "table-fixed")}>
-        <colgroup>
-          <col className="w-[10%]" />
-          <col className="w-[10%]" />
-          <col className="w-[20%]" />
-          <col className="w-[11%]" />
-          <col className="w-[11%]" />
-          <col className="w-[13%]" />
-          <col className="min-w-[200px] w-[25%]" />
-        </colgroup>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="text-left">Delivery #</TableHead>
-            <TableHead className="text-left">Order ref</TableHead>
-            <TableHead className="text-left">Vendor</TableHead>
-            <TableHead className="text-left">Expected</TableHead>
-            <TableHead className="text-left">Actual / received</TableHead>
-            <TableHead className="text-left">Status</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {loading ? (
-            <TableRow>
-              <TableCell colSpan={7} className="p-0">
-                <LoadingState variant="table" />
-              </TableCell>
-            </TableRow>
-          ) : deliveries.length === 0 ? (
-            <TableRow>
-              <TableCell
-                colSpan={7}
-                className="text-center py-8 text-slate-500"
-              >
-                No deliveries yet. Records appear after a tender or invoice
-                payment completes.
-              </TableCell>
-            </TableRow>
-          ) : filteredDeliveries.length === 0 ? (
-            <TableRow>
-              <TableCell
-                colSpan={7}
-                className="text-center py-8 text-slate-500"
-              >
-                No matching deliveries for this filter or search.
-              </TableCell>
-            </TableRow>
-          ) : (
-            filteredDeliveries.map((delivery) => (
-              <TableRow key={delivery._id}>
-                <TableCell className="min-w-0 truncate font-medium tabular-nums">
-                  {delivery.deliveryNumber}
-                </TableCell>
-                <TableCell className="min-w-0 truncate whitespace-nowrap">
-                  {delivery.orderReference ||
-                    delivery.purchaseOrderNumber ||
-                    "—"}
-                </TableCell>
-                <TableCell className="min-w-0">
-                  <span className="line-clamp-2 break-words">
-                    {delivery.vendorName}
-                  </span>
-                </TableCell>
-                <TableCell className="min-w-0 whitespace-nowrap">
-                  {formatDate(delivery.expectedDate)}
-                </TableCell>
-                <TableCell className="min-w-0 whitespace-nowrap">
-                  {delivery.actualDate ? formatDate(delivery.actualDate) : "—"}
-                </TableCell>
-                <TableCell className="min-w-0">
-                  {getStatusBadge(delivery.status)}
-                </TableCell>
-                <TableCell className="min-w-0 text-right align-top">
-                  <div className="flex flex-col items-end gap-2 md:flex-row md:flex-wrap md:justify-end">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0"
-                      onClick={() => openDetail(delivery)}
-                    >
-                      <Eye className="h-4 w-4 sm:mr-1" />
-                      <span className="hidden sm:inline">Details</span>
-                    </Button>
-                    {isVendor && nextVendorStatus(delivery.status) && (
-                      <Button
-                        size="sm"
-                        className="shrink-0 bg-slate-900"
-                        onClick={() =>
-                          handleAdvanceStatus(
-                            delivery._id,
-                            nextVendorStatus(delivery.status),
-                          )
-                        }
-                      >
-                        <Truck className="h-4 w-4 sm:mr-1" />
-                        <span className="hidden sm:inline">
-                          {nextVendorLabel(delivery.status)}
-                        </span>
-                      </Button>
+      {isVendor ? (
+        <>
+          {/* Narrow screens: full-width rows (no sideways scroll, all columns visible as stacked info). */}
+          <div className="space-y-2 md:hidden">
+            {loading ? (
+              <div className="rounded-lg border border-slate-200 bg-white py-10">
+                <LoadingState
+                  variant="compact"
+                  label="Loading deliveries…"
+                />
+              </div>
+            ) : deliveries.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/80 px-4 py-10 text-center text-sm text-slate-600">
+                <Truck className="mx-auto h-8 w-8 text-primary/70" />
+                <p className="mt-2 font-medium text-accent">No deliveries yet</p>
+                <p className="mt-1 text-xs">
+                  Records appear after a tender or invoice payment completes.
+                </p>
+              </div>
+            ) : filteredDeliveries.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-600">
+                No matching deliveries. Try clearing search or filters.
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {filteredDeliveries.map((delivery) => (
+                  <li
+                    key={delivery._id}
+                    className={cn(
+                      "rounded-lg border border-slate-200 bg-white p-3.5 shadow-sm",
+                      hasRecordedDelay(delivery) &&
+                        "border-amber-200 bg-amber-50/30",
                     )}
-                    {isProcurementOfficer &&
-                      normalizeDeliveryStatus(delivery.status) ===
-                        DELIVERY_STATUS.READY_FOR_CONFIRMATION && (
-                        <Button
-                          size="sm"
-                          className="shrink-0 bg-teal-700 shadow-none hover:bg-teal-600"
-                          onClick={() => openConfirmDelivery(delivery)}
-                        >
-                          <CheckCircle className="h-4 w-4 sm:mr-1" />
-                          <span className="hidden sm:inline">
-                            Confirm receipt
-                          </span>
-                        </Button>
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-mono text-[15px] font-semibold leading-tight text-accent">
+                        {delivery.deliveryNumber}
+                      </p>
+                      {getStatusBadge(delivery.status)}
+                    </div>
+                    <p className="mt-2 text-xs leading-relaxed text-slate-700">
+                      <span className="font-medium text-slate-900">Order:</span>{" "}
+                      {delivery.orderReference ||
+                        delivery.purchaseOrderNumber ||
+                        "—"}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      Expected{" "}
+                      <span className="font-medium text-slate-800">
+                        {formatDate(delivery.expectedDate)}
+                      </span>
+                      {" · "}Actual{" "}
+                      <span className="font-medium text-slate-800">
+                        {delivery.actualDate
+                          ? formatDate(delivery.actualDate)
+                          : "—"}
+                      </span>
+                    </p>
+                    <div className="mt-3 border-t border-slate-100 pt-3">
+                      {vendorDeliveryActions(delivery)}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* md+: compact table — no forced min-width so columns stay in view */}
+          <div className="hidden overflow-x-auto md:block">
+            <Table
+              className={cn(
+                WORKSPACE_DATA_TABLE_CLASS,
+                "w-full table-fixed border-collapse text-[13px]",
+              )}
+            >
+              <colgroup>
+                <col className="w-[14%]" />
+                <col className="w-[16%]" />
+                <col className="w-[14%]" />
+                <col className="w-[14%]" />
+                <col className="w-[18%]" />
+                <col className="w-[24%]" />
+              </colgroup>
+              <TableHeader>
+                <TableRow className="border-b border-slate-200 bg-slate-50/90 hover:bg-transparent">
+                  <TableHead className="py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                    Delivery #
+                  </TableHead>
+                  <TableHead className="py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                    Order ref
+                  </TableHead>
+                  <TableHead className="py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                    Expected
+                  </TableHead>
+                  <TableHead className="py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                    Actual
+                  </TableHead>
+                  <TableHead className="py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                    Status
+                  </TableHead>
+                  <TableHead className="py-2 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                    Actions
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={vendorTableColSpan} className="p-0">
+                      <LoadingState variant="table" label="Loading…" />
+                    </TableCell>
+                  </TableRow>
+                ) : deliveries.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={vendorTableColSpan}
+                      className="py-10 text-center text-sm text-slate-600"
+                    >
+                      <Truck className="mx-auto h-8 w-8 text-primary/70" />
+                      <p className="mt-2 font-medium text-accent">
+                        No deliveries yet
+                      </p>
+                      <p className="mt-1 text-xs">
+                        Records appear after payment completes.
+                      </p>
+                    </TableCell>
+                  </TableRow>
+                ) : filteredDeliveries.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={vendorTableColSpan}
+                      className="py-8 text-center text-sm text-slate-600"
+                    >
+                      No matching deliveries for this filter or search.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredDeliveries.map((delivery, rowIdx) => (
+                    <TableRow
+                      key={delivery._id}
+                      className={cn(
+                        "border-b border-slate-100 last:border-b-0 hover:bg-slate-50/80",
+                        rowIdx % 2 === 1 && "bg-white",
+                        hasRecordedDelay(delivery) && "bg-amber-50/25",
                       )}
-                    {isProcurementOfficer &&
-                      normalizeDeliveryStatus(delivery.status) ===
-                        DELIVERY_STATUS.VERIFIED && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="shrink-0"
-                          onClick={() => {
-                            openDetail(delivery);
-                          }}
-                        >
-                          Inspect
-                        </Button>
-                      )}
-                    {isVendor &&
-                      ![
-                        DELIVERY_STATUS.VERIFIED,
-                        DELIVERY_STATUS.INSPECTED,
-                        DELIVERY_STATUS.REJECTED,
-                      ].includes(normalizeDeliveryStatus(delivery.status)) && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="shrink-0 text-amber-800 border-amber-300"
-                          onClick={() => {
-                            setDelayTarget(delivery);
-                            setDelayReason("");
-                            setDelayOpen(true);
-                          }}
-                        >
-                          <AlertTriangle className="h-4 w-4 sm:mr-1" />
-                          <span className="hidden sm:inline">Delay</span>
-                        </Button>
-                      )}
-                  </div>
+                    >
+                      <TableCell className="min-w-0 py-2 align-middle font-mono text-[13px] font-semibold tabular-nums text-accent">
+                        {delivery.deliveryNumber}
+                      </TableCell>
+                      <TableCell className="min-w-0 py-2 align-middle text-slate-800">
+                        <span className="line-clamp-2 break-all">
+                          {delivery.orderReference ||
+                            delivery.purchaseOrderNumber ||
+                            "—"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="min-w-0 whitespace-nowrap py-2 align-middle text-slate-700">
+                        {formatDate(delivery.expectedDate)}
+                      </TableCell>
+                      <TableCell className="min-w-0 whitespace-nowrap py-2 align-middle text-slate-700">
+                        {delivery.actualDate
+                          ? formatDate(delivery.actualDate)
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="min-w-0 py-2 align-middle">
+                        {getStatusBadge(delivery.status)}
+                      </TableCell>
+                      <TableCell className="min-w-0 py-2 text-right align-middle">
+                        {vendorDeliveryActions(delivery)}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-slate-200/90 bg-white shadow-sm">
+          <Table className={cn(WORKSPACE_DATA_TABLE_CLASS, "table-fixed")}>
+          <colgroup>
+            <col className="w-[10%]" />
+            <col className="w-[10%]" />
+            <col className="w-[20%]" />
+            <col className="w-[11%]" />
+            <col className="w-[11%]" />
+            <col className="w-[13%]" />
+            <col className="min-w-[200px] w-[25%]" />
+          </colgroup>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="text-left">Delivery #</TableHead>
+              <TableHead className="text-left">Order ref</TableHead>
+              <TableHead className="text-left">Vendor</TableHead>
+              <TableHead className="text-left">Expected</TableHead>
+              <TableHead className="text-left">Actual / received</TableHead>
+              <TableHead className="text-left">Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={staffTableColSpan} className="p-0">
+                  <LoadingState variant="table" />
                 </TableCell>
               </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
+            ) : deliveries.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={staffTableColSpan}
+                  className="py-8 text-center text-slate-500"
+                >
+                  No deliveries yet. Records appear after a tender or invoice
+                  payment completes.
+                </TableCell>
+              </TableRow>
+            ) : filteredDeliveries.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={staffTableColSpan}
+                  className="py-8 text-center text-slate-500"
+                >
+                  No matching deliveries for this filter or search.
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredDeliveries.map((delivery) => (
+                <TableRow key={delivery._id}>
+                  <TableCell className="min-w-0 truncate font-medium tabular-nums">
+                    {delivery.deliveryNumber}
+                  </TableCell>
+                  <TableCell className="min-w-0 truncate whitespace-nowrap">
+                    {delivery.orderReference ||
+                      delivery.purchaseOrderNumber ||
+                      "—"}
+                  </TableCell>
+                  <TableCell className="min-w-0">
+                    <span className="line-clamp-2 break-words">
+                      {delivery.vendorName}
+                    </span>
+                  </TableCell>
+                  <TableCell className="min-w-0 whitespace-nowrap">
+                    {formatDate(delivery.expectedDate)}
+                  </TableCell>
+                  <TableCell className="min-w-0 whitespace-nowrap">
+                    {delivery.actualDate
+                      ? formatDate(delivery.actualDate)
+                      : "—"}
+                  </TableCell>
+                  <TableCell className="min-w-0">
+                    {getStatusBadge(delivery.status)}
+                  </TableCell>
+                  <TableCell className="min-w-0 text-right align-top">
+                    <div className="flex flex-col items-end gap-2 md:flex-row md:flex-wrap md:justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={() => openDetail(delivery)}
+                      >
+                        <Eye className="h-4 w-4 sm:mr-1" />
+                        <span className="hidden sm:inline">Details</span>
+                      </Button>
+                      {isProcurementOfficer &&
+                        normalizeDeliveryStatus(delivery.status) ===
+                          DELIVERY_STATUS.READY_FOR_CONFIRMATION && (
+                          <Button
+                            size="sm"
+                            className="shrink-0 bg-teal-700 shadow-none hover:bg-teal-600"
+                            onClick={() => openConfirmDelivery(delivery)}
+                          >
+                            <CheckCircle className="h-4 w-4 sm:mr-1" />
+                            <span className="hidden sm:inline">
+                              Confirm receipt
+                            </span>
+                          </Button>
+                        )}
+                      {isProcurementOfficer &&
+                        normalizeDeliveryStatus(delivery.status) ===
+                          DELIVERY_STATUS.VERIFIED && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="shrink-0"
+                            onClick={() => {
+                              openDetail(delivery);
+                            }}
+                          >
+                            Inspect
+                          </Button>
+                        )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+        </div>
+      )}
 
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
@@ -767,7 +982,9 @@ const Deliveries = () => {
                   </p>
                 </div>
                 <div>
-                  <span className="text-slate-500">Vendor</span>
+                  <span className="text-slate-500">
+                    {isVendor ? "Your business" : "Vendor"}
+                  </span>
                   <p className="font-medium text-slate-900">
                     {detail.vendorName}
                   </p>
@@ -882,7 +1099,7 @@ const Deliveries = () => {
 
               {isVendor && nextVendorStatus(detail.status) && (
                 <Button
-                  className="w-full bg-slate-900"
+                  className="w-full bg-primary text-white hover:bg-[var(--color-primary-hover)]"
                   onClick={() =>
                     handleAdvanceStatus(
                       detail._id,

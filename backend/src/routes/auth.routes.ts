@@ -48,6 +48,7 @@ function fileToDataUrl(file: Express.Multer.File): string {
   return `data:${file.mimetype};base64,${b64}`;
 }
 
+
 // Public vendor signup (used by frontend Signup.jsx) — full vendor form + pending user (no login until admin approves)
 router.post(
   "/register",
@@ -104,7 +105,9 @@ router.post(
           message: "PAN number is required.",
         });
       }
-      const regNorm = String(registrationNumber || businessLicense || "").trim();
+      const regNorm = String(
+        registrationNumber || businessLicense || "",
+      ).trim();
       if (!regNorm) {
         return res.status(400).json({
           success: false,
@@ -451,7 +454,7 @@ router.post("/register-vendor", async (req, res) => {
 
 router.post("/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, rememberMe } = req.body;
     const emailNorm = String(email || "")
       .toLowerCase()
       .trim();
@@ -522,7 +525,10 @@ router.post("/login", async (req, res) => {
       { userId: user._id, role: user.role },
       getJwtSecret(),
       {
-        expiresIn: getJwtExpiresIn(),
+        expiresIn:
+          rememberMe === true
+            ? process.env.JWT_REMEMBER_EXPIRES_IN?.trim() || "30d"
+            : getJwtExpiresIn(),
       },
     );
 
@@ -562,6 +568,7 @@ router.post("/login", async (req, res) => {
   }
 });
 
+
 // Temporary bootstrap endpoint to create an initial admin user
 const ensureBootstrapAdmin = async (_req: any, res: any) => {
   try {
@@ -573,10 +580,10 @@ const ensureBootstrapAdmin = async (_req: any, res: any) => {
     }
     const hashed = await bcrypt.hash("Admin@123", 10);
     const admin = await User.findOneAndUpdate(
-      { email: "admin@paropakar.org" },
+      { email: "adminparopakarorg@gmail.com" },
       {
         name: "System Administrator",
-        email: "admin@paropakar.org",
+        email: "adminparopakarorg@gmail.com",
         password: hashed,
         role: "ADMIN" as UserRole,
         isActive: true,

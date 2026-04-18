@@ -101,7 +101,9 @@ const AdminUserDetail = () => {
       </div>
 
       <section className="bg-white rounded-2xl border border-slate-200 shadow-sm px-5 py-4">
-        <h1 className="text-sm font-semibold text-slate-900 mb-3">User details</h1>
+        <h1 className="text-sm font-semibold text-slate-900 mb-3">
+          User details
+        </h1>
         {loading ? (
           <LoadingState variant="inline" label="Loading details…" />
         ) : !detailUser ? (
@@ -115,7 +117,9 @@ const AdminUserDetail = () => {
             <div className="grid gap-2 sm:grid-cols-2">
               <div>
                 <p className="text-slate-500">Name</p>
-                <p className="font-medium text-slate-900">{detailUser.name || "—"}</p>
+                <p className="font-medium text-slate-900">
+                  {detailUser.name || "—"}
+                </p>
               </div>
               <div>
                 <p className="text-slate-500">Email</p>
@@ -230,7 +234,9 @@ const AdminUserDetail = () => {
             <dl className="grid gap-2 sm:grid-cols-2">
               <div>
                 <dt className="text-slate-500">Name</dt>
-                <dd className="font-medium text-slate-900">{detailUser.name}</dd>
+                <dd className="font-medium text-slate-900">
+                  {detailUser.name}
+                </dd>
               </div>
               <div>
                 <dt className="text-slate-500">Email</dt>

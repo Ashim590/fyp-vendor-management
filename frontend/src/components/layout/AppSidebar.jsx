@@ -66,7 +66,7 @@ const SIDEBAR_CONFIG = {
     { name: "Dashboard", path: "/", icon: LayoutDashboard },
     { name: "Tenders", path: "/tenders", icon: Gavel },
     { name: "Tender quotations", path: "/my-bids", icon: ClipboardList },
-    { name: "Invoices", path: "/invoices", icon: Receipt },
+    { name: "My invoices", path: "/my-invoices", icon: Receipt },
     { name: "My payments", path: "/my-payments", icon: Banknote },
     { name: "Deliveries", path: "/deliveries", icon: Truck },
   ],
@@ -103,6 +103,9 @@ export function useWorkspaceNavIsActive() {
     }
     if (path === "/my-payments") {
       return location.pathname === "/my-payments";
+    }
+    if (path === "/my-invoices") {
+      return location.pathname === "/my-invoices";
     }
     if (path === "/procurement/payments") {
       return location.pathname.startsWith("/procurement/payments");

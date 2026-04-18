@@ -25,7 +25,8 @@ import LandingContact from "./components/landing/LandingContact";
 import PurchaseOrders from "./components/procurement/PurchaseOrders";
 import Deliveries from "./components/procurement/Deliveries";
 import DeliveryAuditMap from "./components/procurement/DeliveryAuditMap";
-import Invoices from "./components/procurement/Invoices";
+import InvoicesEntry from "./components/procurement/InvoicesEntry";
+import VendorInvoices from "./components/procurement/VendorInvoices";
 import PurchaseRequestList from "./components/procurement/PurchaseRequestList";
 import PurchaseRequests from "./components/procurement/PurchaseRequests";
 import PurchaseRequestDetails from "./components/procurement/PurchaseRequestDetails";
@@ -80,7 +81,9 @@ const GenericDashboard = () => <LandingHome />;
 
 // Vendor Routes Wrapper - Admin and Staff only
 const VendorsRoute = ({ component: Component }) => (
-  <ProtectedRoute allowedRoles={[SESSION_ROLE.ADMIN, SESSION_ROLE.PROCUREMENT_OFFICER]}>
+  <ProtectedRoute
+    allowedRoles={[SESSION_ROLE.ADMIN, SESSION_ROLE.PROCUREMENT_OFFICER]}
+  >
     <Component />
   </ProtectedRoute>
 );
@@ -128,7 +131,12 @@ const appRouter = createBrowserRouter([
       {
         path: "bids-monitor",
         element: (
-          <ProtectedRoute allowedRoles={[SESSION_ROLE.ADMIN, SESSION_ROLE.PROCUREMENT_OFFICER]}>
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+            ]}
+          >
             <AdminBidsMonitor />
           </ProtectedRoute>
         ),
@@ -140,11 +148,13 @@ const appRouter = createBrowserRouter([
       {
         path: "profile",
         element: (
-          <ProtectedRoute allowedRoles={[
-            SESSION_ROLE.ADMIN,
-            SESSION_ROLE.PROCUREMENT_OFFICER,
-            SESSION_ROLE.VENDOR,
-          ]}>
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+              SESSION_ROLE.VENDOR,
+            ]}
+          >
             <Profile />
           </ProtectedRoute>
         ),
@@ -152,11 +162,13 @@ const appRouter = createBrowserRouter([
       {
         path: "notifications",
         element: (
-          <ProtectedRoute allowedRoles={[
-            SESSION_ROLE.ADMIN,
-            SESSION_ROLE.PROCUREMENT_OFFICER,
-            SESSION_ROLE.VENDOR,
-          ]}>
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+              SESSION_ROLE.VENDOR,
+            ]}
+          >
             <NotificationsPage />
           </ProtectedRoute>
         ),
@@ -164,7 +176,12 @@ const appRouter = createBrowserRouter([
       {
         path: "vendors",
         element: (
-          <ProtectedRoute allowedRoles={[SESSION_ROLE.ADMIN, SESSION_ROLE.PROCUREMENT_OFFICER]}>
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+            ]}
+          >
             <VendorList />
           </ProtectedRoute>
         ),
@@ -172,7 +189,12 @@ const appRouter = createBrowserRouter([
       {
         path: "vendors/:id",
         element: (
-          <ProtectedRoute allowedRoles={[SESSION_ROLE.ADMIN, SESSION_ROLE.PROCUREMENT_OFFICER]}>
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+            ]}
+          >
             <VendorDetails />
           </ProtectedRoute>
         ),
@@ -184,11 +206,13 @@ const appRouter = createBrowserRouter([
       {
         path: "purchase-orders",
         element: (
-          <ProtectedRoute allowedRoles={[
-            SESSION_ROLE.ADMIN,
-            SESSION_ROLE.PROCUREMENT_OFFICER,
-            SESSION_ROLE.VENDOR,
-          ]}>
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+              SESSION_ROLE.VENDOR,
+            ]}
+          >
             <PurchaseOrders />
           </ProtectedRoute>
         ),
@@ -196,7 +220,12 @@ const appRouter = createBrowserRouter([
       {
         path: "purchase-requests",
         element: (
-          <ProtectedRoute allowedRoles={[SESSION_ROLE.ADMIN, SESSION_ROLE.PROCUREMENT_OFFICER]}>
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+            ]}
+          >
             <PurchaseRequestList />
           </ProtectedRoute>
         ),
@@ -204,7 +233,12 @@ const appRouter = createBrowserRouter([
       {
         path: "purchase-requests/new",
         element: (
-          <ProtectedRoute allowedRoles={[SESSION_ROLE.ADMIN, SESSION_ROLE.PROCUREMENT_OFFICER]}>
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+            ]}
+          >
             <PurchaseRequests />
           </ProtectedRoute>
         ),
@@ -212,7 +246,12 @@ const appRouter = createBrowserRouter([
       {
         path: "purchase-requests/:id/edit",
         element: (
-          <ProtectedRoute allowedRoles={[SESSION_ROLE.ADMIN, SESSION_ROLE.PROCUREMENT_OFFICER]}>
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+            ]}
+          >
             <PurchaseRequests />
           </ProtectedRoute>
         ),
@@ -220,7 +259,12 @@ const appRouter = createBrowserRouter([
       {
         path: "procurement/requests/:id",
         element: (
-          <ProtectedRoute allowedRoles={[SESSION_ROLE.ADMIN, SESSION_ROLE.PROCUREMENT_OFFICER]}>
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+            ]}
+          >
             <PurchaseRequestDetails />
           </ProtectedRoute>
         ),
@@ -228,7 +272,12 @@ const appRouter = createBrowserRouter([
       {
         path: "procurement/payments",
         element: (
-          <ProtectedRoute allowedRoles={[SESSION_ROLE.ADMIN, SESSION_ROLE.PROCUREMENT_OFFICER]}>
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+            ]}
+          >
             <ProcurementPayments />
           </ProtectedRoute>
         ),
@@ -236,7 +285,12 @@ const appRouter = createBrowserRouter([
       {
         path: "approvals",
         element: (
-          <ProtectedRoute allowedRoles={[SESSION_ROLE.ADMIN, SESSION_ROLE.PROCUREMENT_OFFICER]}>
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+            ]}
+          >
             <Approvals />
           </ProtectedRoute>
         ),
@@ -244,11 +298,13 @@ const appRouter = createBrowserRouter([
       {
         path: "deliveries",
         element: (
-          <ProtectedRoute allowedRoles={[
-            SESSION_ROLE.ADMIN,
-            SESSION_ROLE.PROCUREMENT_OFFICER,
-            SESSION_ROLE.VENDOR,
-          ]}>
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+              SESSION_ROLE.VENDOR,
+            ]}
+          >
             <Deliveries />
           </ProtectedRoute>
         ),
@@ -256,7 +312,12 @@ const appRouter = createBrowserRouter([
       {
         path: "deliveries/audit",
         element: (
-          <ProtectedRoute allowedRoles={[SESSION_ROLE.ADMIN, SESSION_ROLE.PROCUREMENT_OFFICER]}>
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+            ]}
+          >
             <DeliveryAuditMap />
           </ProtectedRoute>
         ),
@@ -264,12 +325,22 @@ const appRouter = createBrowserRouter([
       {
         path: "invoices",
         element: (
-          <ProtectedRoute allowedRoles={[
-            SESSION_ROLE.ADMIN,
-            SESSION_ROLE.PROCUREMENT_OFFICER,
-            SESSION_ROLE.VENDOR,
-          ]}>
-            <Invoices />
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+              SESSION_ROLE.VENDOR,
+            ]}
+          >
+            <InvoicesEntry />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "my-invoices",
+        element: (
+          <ProtectedRoute allowedRoles={[SESSION_ROLE.VENDOR]}>
+            <VendorInvoices />
           </ProtectedRoute>
         ),
       },
@@ -284,11 +355,13 @@ const appRouter = createBrowserRouter([
       {
         path: "payments/esewa/success",
         element: (
-          <ProtectedRoute allowedRoles={[
-            SESSION_ROLE.ADMIN,
-            SESSION_ROLE.PROCUREMENT_OFFICER,
-            SESSION_ROLE.VENDOR,
-          ]}>
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+              SESSION_ROLE.VENDOR,
+            ]}
+          >
             <InvoiceEsewaReturn />
           </ProtectedRoute>
         ),
@@ -296,11 +369,13 @@ const appRouter = createBrowserRouter([
       {
         path: "payments/esewa/failure",
         element: (
-          <ProtectedRoute allowedRoles={[
-            SESSION_ROLE.ADMIN,
-            SESSION_ROLE.PROCUREMENT_OFFICER,
-            SESSION_ROLE.VENDOR,
-          ]}>
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+              SESSION_ROLE.VENDOR,
+            ]}
+          >
             <InvoiceEsewaReturn />
           </ProtectedRoute>
         ),
@@ -308,11 +383,13 @@ const appRouter = createBrowserRouter([
       {
         path: "tenders",
         element: (
-          <ProtectedRoute allowedRoles={[
-            SESSION_ROLE.ADMIN,
-            SESSION_ROLE.PROCUREMENT_OFFICER,
-            SESSION_ROLE.VENDOR,
-          ]}>
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+              SESSION_ROLE.VENDOR,
+            ]}
+          >
             <TenderList />
           </ProtectedRoute>
         ),
@@ -320,7 +397,12 @@ const appRouter = createBrowserRouter([
       {
         path: "tenders/create",
         element: (
-          <ProtectedRoute allowedRoles={[SESSION_ROLE.ADMIN, SESSION_ROLE.PROCUREMENT_OFFICER]}>
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+            ]}
+          >
             <CreateTender />
           </ProtectedRoute>
         ),
@@ -328,11 +410,13 @@ const appRouter = createBrowserRouter([
       {
         path: "tenders/:id",
         element: (
-          <ProtectedRoute allowedRoles={[
-            SESSION_ROLE.ADMIN,
-            SESSION_ROLE.PROCUREMENT_OFFICER,
-            SESSION_ROLE.VENDOR,
-          ]}>
+          <ProtectedRoute
+            allowedRoles={[
+              SESSION_ROLE.ADMIN,
+              SESSION_ROLE.PROCUREMENT_OFFICER,
+              SESSION_ROLE.VENDOR,
+            ]}
+          >
             <TenderDetail />
           </ProtectedRoute>
         ),

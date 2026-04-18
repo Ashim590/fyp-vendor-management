@@ -27,7 +27,14 @@ const ORDERED_SIDEBAR_PREFIXES = {
     "/deliveries",
     "/",
   ],
-  vendor: ["/my-payments", "/invoices", "/my-bids", "/tenders", "/deliveries", "/"],
+  vendor: [
+    "/my-payments",
+    "/my-invoices",
+    "/my-bids",
+    "/tenders",
+    "/deliveries",
+    "/",
+  ],
 };
 
 const NON_WORKSPACE_PATHS = new Set([
@@ -69,10 +76,10 @@ const TYPE_TO_PATHS = {
   bid_accepted: { vendor: ["/my-bids"] },
   bid_rejected: { vendor: ["/my-bids"] },
   payment_pending: { vendor: ["/my-payments"] },
-  payment_completed: { vendor: ["/invoices"] },
+  payment_completed: { vendor: ["/my-payments"] },
   payment_failed: { vendor: ["/my-payments"] },
-  invoice_payment_pending: { vendor: ["/invoices"] },
-  invoice_payment_paid: { vendor: ["/invoices"] },
+  invoice_payment_pending: { vendor: ["/my-invoices"] },
+  invoice_payment_paid: { vendor: ["/my-invoices"] },
   delivery_shipped: {
     admin: ["/deliveries"],
     [SESSION_ROLE.PROCUREMENT_OFFICER]: ["/deliveries"],

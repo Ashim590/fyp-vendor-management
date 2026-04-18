@@ -12,7 +12,7 @@ async function seed() {
   await mongoose.connect(MONGO_URI);
   console.log('Connected to MongoDB');
 
-  const adminEmail = 'admin@paropakar.org';
+  const adminEmail = 'adminparopakarorg@gmail.com';
   const staffEmail = 'staff@paropakar.org';
 
   const existingAdmin = await User.findOne({ email: adminEmail });
@@ -26,7 +26,7 @@ async function seed() {
       role: 'ADMIN',
       isActive: true,
     });
-    console.log('Admin user created (admin@paropakar.org / admin123)');
+    console.log('Admin user created (adminparopakarorg@gmail.com / admin123)');
   } else {
     console.log('Admin user already exists');
   }
@@ -48,7 +48,7 @@ async function seed() {
   }
 
   console.log('\n=== Default login (dev/demo) ===');
-  console.log('Admin: admin@paropakar.org / admin123');
+  console.log('Admin: adminparopakarorg@gmail.com / admin123');
   console.log('Officer: staff@paropakar.org / staff123');
   console.log('================================\n');
 }

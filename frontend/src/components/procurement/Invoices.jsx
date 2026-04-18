@@ -306,7 +306,9 @@ const Invoices = () => {
                 <p className="mb-2 text-xs font-medium uppercase text-slate-500">
                   Line items
                 </p>
-                <Table className={cn(WORKSPACE_DATA_TABLE_CLASS, "table-fixed")}>
+                <Table
+                  className={cn(WORKSPACE_DATA_TABLE_CLASS, "table-fixed")}
+                >
                   <colgroup>
                     <col className="w-[46%]" />
                     <col className="w-[14%]" />
@@ -325,7 +327,9 @@ const Invoices = () => {
                     {(detailInvoice.items || []).map((it, i) => (
                       <TableRow key={i}>
                         <TableCell className="min-w-0">
-                          <span className="font-medium break-words">{it.itemName}</span>
+                          <span className="font-medium break-words">
+                            {it.itemName}
+                          </span>
                           {it.description ? (
                             <span className="mt-1 block break-words text-xs text-slate-600">
                               {it.description}
@@ -395,9 +399,7 @@ const Invoices = () => {
         </select>
       </WorkspaceToolbar>
 
-      <Table
-        className={cn(WORKSPACE_DATA_TABLE_CLASS, "table-fixed")}
-      >
+      <Table className={cn(WORKSPACE_DATA_TABLE_CLASS, "table-fixed")}>
         <colgroup>
           <col className="w-[3%]" />
           <col className="w-[11%]" />
@@ -524,7 +526,9 @@ const Invoices = () => {
                       </div>
                     ) : null}
                   </TableCell>
-                  <TableCell className="min-w-0">{getStatusBadge(invoice.status)}</TableCell>
+                  <TableCell className="min-w-0">
+                    {getStatusBadge(invoice.status)}
+                  </TableCell>
                   <TableCell className="min-w-0">
                     <div className="flex flex-nowrap items-center justify-end gap-1.5">
                       <Button

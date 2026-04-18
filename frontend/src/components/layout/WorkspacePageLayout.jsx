@@ -19,7 +19,13 @@ export function WorkspacePageLayout({ children, className }) {
 /**
  * Page title row: navy headline, optional subtitle, right-aligned actions.
  */
-export function WorkspacePageHeader({ title, description, actions, className }) {
+export function WorkspacePageHeader({
+  title,
+  description,
+  actions,
+  className,
+  titleClassName,
+}) {
   return (
     <div
       className={cn(
@@ -28,7 +34,12 @@ export function WorkspacePageHeader({ title, description, actions, className }) 
       )}
     >
       <div className="min-w-0">
-        <h1 className="text-2xl font-bold tracking-tight text-[#0b1f4d] sm:text-[1.65rem]">
+        <h1
+          className={cn(
+            "text-2xl font-bold tracking-tight text-[#0b1f4d] sm:text-[1.65rem]",
+            titleClassName,
+          )}
+        >
           {title}
         </h1>
         {description ? (
@@ -64,7 +75,12 @@ export function WorkspaceToolbar({ children, className }) {
  * Segmented control for view toggles (e.g. My pending / All).
  * @param {{ value: string, onChange: (v: string) => void, options: { value: string, label: string, icon?: React.ReactNode }[] }} props
  */
-export function WorkspaceSegmentedControl({ value, onChange, options, className }) {
+export function WorkspaceSegmentedControl({
+  value,
+  onChange,
+  options,
+  className,
+}) {
   return (
     <div
       className={cn(

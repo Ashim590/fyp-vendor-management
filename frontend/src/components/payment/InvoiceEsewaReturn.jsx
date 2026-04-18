@@ -1,15 +1,17 @@
 import React, { useEffect } from "react";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { WorkspacePageLayout } from "../layout/WorkspacePageLayout";
 import { getAllInvoices } from "@/redux/invoiceSlice";
+import { SESSION_ROLE } from "@/constants/userRoles";
 
 /**
  * Landing page after eSewa redirects for invoice payments (server redirects here with query params).
  */
 export default function InvoiceEsewaReturn() {
   const dispatch = useDispatch();
+  const { user } = useSelector((store) => store.auth);
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
   const status = searchParams.get("status");
@@ -48,10 +50,14 @@ export default function InvoiceEsewaReturn() {
           <p className="mt-4 font-mono text-xs text-slate-500">Reference: {paymentId}</p>
         )}
         <Link
-          to="/invoices"
+          to={
+            user?.role === SESSION_ROLE.VENDOR ? "/my-invoices" : "/invoices"
+          }
           className="mt-6 inline-block rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
         >
-          Back to invoices
+          {user?.role === SESSION_ROLE.VENDOR
+            ? "Back to my invoices"
+            : "Back to invoices"}
         </Link>
       </div>
     </WorkspacePageLayout>
